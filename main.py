@@ -1,10 +1,65 @@
-import argparse
-from matplotlib import pyplot as plt
 import math
 import numpy as np
 import cv2
 
-CV_PI = 3.1415926535897932384626433832795
+def test():
+    image =  cv2.imread('Task1Dataset/image4.png', cv2.IMREAD_GRAYSCALE)
+    edges = cv2.Canny(image, 50, 200, None, 3)
+    lines = cv2.HoughLines(edges, 1, np.pi / 180, 90, None, 0, 0)
+
+    if lines is None:
+        return
+
+    cdst =  cv2.cvtColor(edges,  cv2.COLOR_GRAY2BGR)
+    angles_deg = []
+
+    # Able to work directly with the normal line because
+    # theta is the same as the angle between the line and the y-axis
+    # This works because you rotate both the line and the axis you compare it to by 90 degrees
+
+    for line in lines:
+        # The Origin is in the top left corner of the image
+        # rho = distance from the origin to the line
+        # theta = counter-clockwise angle from the x-axis to normal of the line [0, π]
+        rho, theta = line[0]
+
+        # When rho is negative, we need to flip the angle along the x-axis
+        if rho < 0:
+            theta = (theta + np.pi)
+
+        angle = math.degrees(theta)
+
+        # If the angle is close to 360 degrees, assume it's a vertical line
+        if abs(angle - 360) < 1.1:
+            angle = 0
+
+        angles_deg.append(angle)
+
+        a = math.cos(theta)
+        b = math.sin(theta)
+        x0 = a * rho
+        y0 = b * rho
+        pt1 = (int(x0 + 1000*(-b)), int(y0 + 1000*(a)))
+        pt2 = (int(x0 - 1000*(-b)), int(y0 - 1000*(a)))
+        cv2.line(cdst, pt1, pt2, (0, 0, 255), 1,  cv2.LINE_AA)
+
+    angles_deg = sorted(angles_deg)
+    print("deg:", angles_deg)
+
+    # Calculate angle between two lines
+    if len(angles_deg) >= 2:
+        angle_between_lines = abs(angles_deg[0] - angles_deg[len(angles_deg) - 1])
+
+        # Want the acute angle
+        if (angle_between_lines > 180):
+            angle_between_lines = 360 - angle_between_lines
+        print(f"Angle between two lines: {angle_between_lines} degrees")
+
+    # Draw the lines
+    cv2.imshow('Detected Lines', cdst)
+    cv2.waitKey(0)
+    cv2.destroyAllWindows()
+
 
 def testTask1(folderName):
     # assume that this folder name has a file list.txt that contains the annotation
@@ -106,4 +161,5 @@ def testTask3(iconFolderName, testFolderName):
 #         # The Task3 dataset has two directories, an annotation directory that contains the annotation and a png directory with list of images 
 #         testTask3(args.IconDataset,args.Task3Dataset)
 
-testTask1('a')
+test()
+# testTask1('a')
