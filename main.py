@@ -14,56 +14,77 @@ def testTask1(folderName):
     # Write your code to calculate the angle and obtain the result as a list predAngles
     # Calculate and provide the error in predicting the angle for each image
 
-    lines = cv2.imread('Task1Dataset/image1.png', cv2.IMREAD_GRAYSCALE)
+    # Read in image
+    lines = cv2.imread('Task1Dataset/image10.png', cv2.IMREAD_GRAYSCALE)
+
+    # Apply canny edge detection
     dst = cv2.Canny(lines, 50, 200, None, 3)
-    hough = cv2.HoughLines(dst, 1, np.pi / 180, 86, None, 0, 0)
 
-    print(hough)
+    # Apply hough line fitting
+    # This outputs counter-clockwise angles. why
+    hough = cv2.HoughLines(dst, 1, np.pi / 180, 86)
 
+    # Recolor image
     cdst = cv2.cvtColor(dst, cv2.COLOR_GRAY2BGR)
 
     if hough is None:
         return
     radians = []
+    # For each line that hough returns
     for i in range (0, len(hough)):
+        # It seems that if rho is negative it means the line is pointing to the left
         rho = hough[i][0][0]
+        print("rho: ", rho)
         theta = hough[i][0][1]
+        print("theta: ", theta * (180 / np.pi))
+        
         a = math.cos(theta)
         b = math.sin(theta)
+        # print("a: ", a)
+        print("b: ", b)
         x0 = a * rho
         y0 = b * rho
+
+        # Calculate 2 points along the line
         pt1 = (int(x0 + 1000*(-b)), int(y0 + 1000*(a)))
         pt2 = (int(x0 - 1000*(-b)), int(y0 - 1000*(a)))
+
+        # Draw line over detected edges
         cv2.line(cdst, pt1, pt2, (0, 0, 255), 1, cv2.LINE_AA)
-        print("theta: ", theta)
-        # Maybe check dx
-        if (math.isclose(theta, np.pi / 2, rel_tol=0.005)):
-            radians.append(0)
-        if (theta == 0):
+
+        # If line is vertical
+        if (b == 0):
             radians.append(np.pi / 2)
-        elif (theta > (np.pi * 3/2) and theta < (np.pi * 2)):
-            radians.append((np.pi * 2) + theta)
-        elif (theta > (np.pi / 2) and theta < np.pi):
-            radians.append(theta - (np.pi / 2))
+        # If line is horizontal
+        elif (math.isclose(b, 1)):
+            radians.append(0)
+        # If between 0 and 90 degrees
         elif (theta > 0 and theta < (np.pi / 2)):
-            radians.append((np.pi / 2) + theta)
+            radians.append((np.pi / 2) - theta)
+        # If between 90 and 180 degrees
+        elif (theta > (np.pi / 2) and theta < np.pi):
+            radians.append((np.pi * 3/2) - theta)
+        # If between 180 and 270 degrees
         elif (theta > np.pi and theta < (np.pi * 3/2)):
             radians.append(theta - (np.pi / 2))
+        # If between 270 and 360 degrees
+        elif (theta > (np.pi * 3/2) and theta < (np.pi * 2)):
+            radians.append((np.pi * 5/2) - theta)
  
     for a in radians:
-        print(a * (180 / np.pi))
+        print("angle: ", a * (180 / np.pi))
 
     # unique_radians = np.unique(radians)
     radians = sorted(radians)
     angle = np.abs(radians[0] - radians[len(radians) - 1])
     if angle > np.pi:
-        angle =  np.pi * 2 - angle
+        angle = np.pi * 2 - angle
 
     print(angle * (180 / np.pi))
 
-    cv2.imshow("edges", lines)
-    cv2.imshow('hough', cdst)
-    cv2.waitKey()
+    # cv2.imshow("edges", lines)
+    # cv2.imshow('hough', cdst)
+    # cv2.waitKey()
     
     # return(totalError)
 
