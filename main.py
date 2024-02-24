@@ -1,147 +1,88 @@
 import math
 import numpy as np
 import cv2
+import pandas as pd
 
-def test():
-    image =  cv2.imread('Task1Dataset/image4.png', cv2.IMREAD_GRAYSCALE)
-    edges = cv2.Canny(image, 50, 200, None, 3)
-    lines = cv2.HoughLines(edges, 1, np.pi / 180, 90, None, 0, 0)
+def testTask1(folder_name):
+    # Read in data
+    task1_data = pd.read_csv(folder_name+"/list.txt")
+    task1_data = task1_data.reset_index()
 
-    if lines is None:
-        return
+    actual_angles = []
+    predicted_angles = []
 
-    cdst =  cv2.cvtColor(edges,  cv2.COLOR_GRAY2BGR)
-    angles_deg = []
+    # Iterate through all images
+    for index, row in task1_data.iterrows():
+        image =  cv2.imread(folder_name + '/' + row['FileName'], cv2.IMREAD_GRAYSCALE)
+        actual_angles.append(row['AngleInDegrees'])
+        edges = cv2.Canny(image, 50, 200, None, 3)
+        lines = cv2.HoughLines(edges, 1, np.pi / 180, 90, None, 0, 0)
 
-    # Able to work directly with the normal line because
-    # theta is the same as the angle between the line and the y-axis
-    # This works because you rotate both the line and the axis you compare it to by 90 degrees
+        if lines is None:
+            return
 
-    for line in lines:
-        # The Origin is in the top left corner of the image
-        # rho = distance from the origin to the line
-        # theta = counter-clockwise angle from the x-axis to normal of the line [0, π]
-        rho, theta = line[0]
+        cdst =  cv2.cvtColor(edges,  cv2.COLOR_GRAY2BGR)
+        angles_deg = []
 
-        # When rho is negative, we need to flip the angle along the x-axis
-        if rho < 0:
-            theta = (theta + np.pi)
+        # Able to work directly with the normal line because
+        # theta is the same as the angle between the line and the y-axis
+        # This works because you rotate both the line and the axis you compare it to by 90 degrees
 
-        angle = math.degrees(theta)
+        for line in lines:
+            # The Origin is in the top left corner of the image
+            # rho = distance from the origin to the line
+            # theta = counter-clockwise angle from the x-axis to normal of the line [0, π]
+            rho, theta = line[0]
 
-        # If the angle is close to 360 degrees, assume it's a vertical line
-        if abs(angle - 360) < 1.1:
-            angle = 0
+            # When rho is negative, we need to flip the angle along the x-axis
+            if rho < 0:
+                theta = (theta + np.pi)
 
-        angles_deg.append(angle)
+            angle = math.degrees(theta)
 
-        a = math.cos(theta)
-        b = math.sin(theta)
-        x0 = a * rho
-        y0 = b * rho
-        pt1 = (int(x0 + 1000*(-b)), int(y0 + 1000*(a)))
-        pt2 = (int(x0 - 1000*(-b)), int(y0 - 1000*(a)))
-        cv2.line(cdst, pt1, pt2, (0, 0, 255), 1,  cv2.LINE_AA)
+            # If the angle is close to 360 degrees, assume it's a vertical line
+            if abs(angle - 360) < 1.1:
+                angle = 0
 
-    angles_deg = sorted(angles_deg)
-    print("deg:", angles_deg)
+            angles_deg.append(angle)
 
-    # Calculate angle between two lines
-    if len(angles_deg) >= 2:
-        angle_between_lines = abs(angles_deg[0] - angles_deg[len(angles_deg) - 1])
+            a = math.cos(theta)
+            b = math.sin(theta)
+            x0 = a * rho
+            y0 = b * rho
+            pt1 = (int(x0 + 1000*(-b)), int(y0 + 1000*(a)))
+            pt2 = (int(x0 - 1000*(-b)), int(y0 - 1000*(a)))
+            cv2.line(cdst, pt1, pt2, (0, 0, 255), 1,  cv2.LINE_AA)
 
-        # Want the acute angle
-        if (angle_between_lines > 180):
-            angle_between_lines = 360 - angle_between_lines
-        print(f"Angle between two lines: {angle_between_lines} degrees")
+        angles_deg = sorted(angles_deg)
+
+        # Calculate angle between two lines
+        if len(angles_deg) >= 2:
+            angle_between_lines = abs(angles_deg[0] - angles_deg[len(angles_deg) - 1])
+
+            # Want the acute angle
+            if (angle_between_lines > 180):
+                angle_between_lines = 360 - angle_between_lines
+            predicted_angles.append(angle_between_lines)
 
     # Draw the lines
-    cv2.imshow('Detected Lines', cdst)
-    cv2.waitKey(0)
-    cv2.destroyAllWindows()
+    # cv2.imshow('Detected Lines', cdst)
+    # cv2.waitKey(0)
+    # cv2.destroyAllWindows()
+            
+    # Calculate errors
+    errors = np.abs(np.subtract(actual_angles, predicted_angles))
+    total_error = np.sum(errors)
 
+    combined_results = np.c_[actual_angles, predicted_angles, errors]
 
-def testTask1(folderName):
-    # assume that this folder name has a file list.txt that contains the annotation
-    # task1Data = pd.read_csv(folderName+"/list.txt")
-    # Write code to read in each image
-    # Write code to process the image
-    # Write your code to calculate the angle and obtain the result as a list predAngles
-    # Calculate and provide the error in predicting the angle for each image
-
-    # Read in image
-    lines = cv2.imread('Task1Dataset/image10.png', cv2.IMREAD_GRAYSCALE)
-
-    # Apply canny edge detection
-    dst = cv2.Canny(lines, 50, 200, None, 3)
-
-    # Apply hough line fitting
-    # This outputs counter-clockwise angles. why
-    hough = cv2.HoughLines(dst, 1, np.pi / 180, 86)
-
-    # Recolor image
-    cdst = cv2.cvtColor(dst, cv2.COLOR_GRAY2BGR)
-
-    if hough is None:
-        return
-    radians = []
-    # For each line that hough returns
-    for i in range (0, len(hough)):
-        # It seems that if rho is negative it means the line is pointing to the left
-        rho = hough[i][0][0]
-        print("rho: ", rho)
-        theta = hough[i][0][1]
-        print("theta: ", theta * (180 / np.pi))
-        
-        a = math.cos(theta)
-        b = math.sin(theta)
-        # print("a: ", a)
-        print("b: ", b)
-        x0 = a * rho
-        y0 = b * rho
-
-        # Calculate 2 points along the line
-        pt1 = (int(x0 + 1000*(-b)), int(y0 + 1000*(a)))
-        pt2 = (int(x0 - 1000*(-b)), int(y0 - 1000*(a)))
-
-        # Draw line over detected edges
-        cv2.line(cdst, pt1, pt2, (0, 0, 255), 1, cv2.LINE_AA)
-
-        # If line is vertical
-        if (b == 0):
-            radians.append(np.pi / 2)
-        # If line is horizontal
-        elif (math.isclose(b, 1)):
-            radians.append(0)
-        # If between 0 and 90 degrees
-        elif (theta > 0 and theta < (np.pi / 2)):
-            radians.append((np.pi / 2) - theta)
-        # If between 90 and 180 degrees
-        elif (theta > (np.pi / 2) and theta < np.pi):
-            radians.append((np.pi * 3/2) - theta)
-        # If between 180 and 270 degrees
-        elif (theta > np.pi and theta < (np.pi * 3/2)):
-            radians.append(theta - (np.pi / 2))
-        # If between 270 and 360 degrees
-        elif (theta > (np.pi * 3/2) and theta < (np.pi * 2)):
-            radians.append((np.pi * 5/2) - theta)
- 
-    for a in radians:
-        print("angle: ", a * (180 / np.pi))
-
-    # unique_radians = np.unique(radians)
-    radians = sorted(radians)
-    angle = np.abs(radians[0] - radians[len(radians) - 1])
-    if angle > np.pi:
-        angle = np.pi * 2 - angle
-
-    print(angle * (180 / np.pi))
-
-    # cv2.imshow("edges", lines)
-    # cv2.imshow('hough', cdst)
-    # cv2.waitKey()
+    # Create dataframe to show results
+    results = pd.DataFrame(combined_results, index=[filename.strip('.png') for filename in task1_data.loc[:,'FileName']], columns=['Actual', 'Predicted', 'Error'])
     
-    # return(totalError)
+    print(results)
+    print(f"\nTotal error: {total_error}")
+
+    return(total_error)
 
 def testTask2(iconDir, testDir):
     # assume that test folder name has a directory annotations with a list of csv files
@@ -182,5 +123,4 @@ def testTask3(iconFolderName, testFolderName):
 #         # The Task3 dataset has two directories, an annotation directory that contains the annotation and a png directory with list of images 
 #         testTask3(args.IconDataset,args.Task3Dataset)
 
-test()
-# testTask1('a')
+testTask1('Task1Dataset')
