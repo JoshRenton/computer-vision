@@ -3,6 +3,65 @@ import numpy as np
 import cv2
 import pandas as pd
 
+
+def HoughLines(edges, rho_res, theta_res, threshold):
+    """
+    Multiplies two numbers and returns the result.
+
+    Parameters:
+        edges (): 2D array representing the edges of an image
+        rho_res (double): Resolution of rho in pixels
+        theta_res (double): Resolution of theta in radians
+        threshold (int): Minimum number of intersections to detect a line
+ 
+    Returns:
+        int: blah blah blah
+    """
+
+    # edges is a 2D array with one cell per pixel of the original image
+    # Each cell is a value between 0 and 255, with 255 being an edge
+
+    # TODO: Remove resolution parameters? Functions breaks if they're changed
+
+    # theta_res = pi / 180 = 1 degree, giving 180 theta values
+    theta_values = np.arange(0, np.pi, theta_res)
+
+    # TODO: Not sure how you would get at most -diagonal_length
+    # Max rho is the diagonal of the image (when theta = 45 degrees)
+    diagonal_length = np.sqrt(edges.shape[0]**2 + edges.shape[1]**2)
+    rho_values = np.arange(-diagonal_length, diagonal_length, rho_res)
+
+    # Create an accumulator array to store the votes (in parameter space)
+    accumulator = np.zeros([len(theta_values), len(rho_values)])
+
+    # Get the indices of all edges in the edge array
+    # The index is the coordinate of the edge since the edge array is the same size as the image
+    edge_coords = np.asarray(edges == 255).nonzero()
+
+    # Precalculate sin and cos values for each theta value
+    theta_sins = np.sin(theta_values)
+    theta_coss = np.cos(theta_values)
+
+    # For each edge, calculate rho for each value of theta
+    for x,y in zip(edge_coords[0], edge_coords[1]):
+        for t in range(len(theta_values)):
+            rho = x * theta_coss[t] + y * theta_sins[t]
+
+            # Get the index of the closest rho value below the actual calculated rho
+            r_index = np.searchsorted(rho_values, rho, side='left') - 1
+            # Increment the vote for this cell
+            accumulator[t, r_index] += 1
+
+    # TODO: Look at hough_peaks to see if this function can return just one line
+
+    # TODO: Need to rewrite these lines, copy pasta
+    final_theta_index, final_rho_index = np.where(accumulator > threshold)
+    final_rho = rho_values[final_rho_index]    
+    final_theta = theta_values[final_theta_index]
+    
+    polar_coordinates = np.vstack([final_rho, final_theta]).T
+    return polar_coordinates
+
 def testTask1(folder_name):
     # Read in data
     task1_data = pd.read_csv(folder_name+"/list.txt")
@@ -16,7 +75,10 @@ def testTask1(folder_name):
         image =  cv2.imread(folder_name + '/' + row['FileName'], cv2.IMREAD_GRAYSCALE)
         actual_angles.append(row['AngleInDegrees'])
         edges = cv2.Canny(image, 50, 200, None, 3)
-        lines = cv2.HoughLines(edges, 1, np.pi / 180, 90, None, 0, 0)
+
+        # lines = cv2.HoughLines(edges, 1, np.pi / 180, 90, None, 0, 0)
+        # 1 degree = pi / 180
+        lines = HoughLines(edges, 1, math.radians(1), 90)
 
         if lines is None:
             return
@@ -32,13 +94,16 @@ def testTask1(folder_name):
             # The Origin is in the top left corner of the image
             # rho = distance from the origin to the line
             # theta = counter-clockwise angle from the x-axis to normal of the line [0, π]
-            rho, theta = line[0]
+
+            # rho, theta = line[0]
+            rho, theta = line
 
             # When rho is negative, we need to flip the angle along the x-axis
             if rho < 0:
                 theta = (theta + np.pi)
 
             angle = math.degrees(theta)
+            print("rho:", rho, "\t theta:", angle)
 
             # If the angle is close to 360 degrees, assume it's a vertical line
             if abs(angle - 360) < 1.1:
@@ -79,6 +144,7 @@ def testTask1(folder_name):
     # Create dataframe to show results
     results = pd.DataFrame(combined_results, index=[filename.strip('.png') for filename in task1_data.loc[:,'FileName']], columns=['Actual', 'Predicted', 'Error'])
     
+    print("")
     print(results)
     print(f"\nTotal error: {total_error}")
 
