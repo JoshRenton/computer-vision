@@ -4,6 +4,8 @@ import cv2
 import pandas as pd
 
 def round_angle(angle):
+    if angle < 0:
+        angle += 180
     if 0 <= angle < 22.5 or 157.5 <= angle <= 180:
         return 0
     elif 22.5 <= angle < 67.5:
@@ -13,39 +15,16 @@ def round_angle(angle):
     else:
         return 135
     
-# def pixel_suppressed(g, intensity, angle, row, column):
-#     g_padded = np.pad(g, (1, 1), 'constant')
-#     if 0 <= angle <= 45:
-#         alpha = np.tan(angle)
-#         r = alpha * g_padded[row - 1][column + 1] + (1 - alpha) * g_padded[row][column + 1]
-#         p = alpha * g_padded[row + 1][column - 1] + (1 - alpha) * g_padded[row][column - 1]
-#     elif 135 < angle <= 180:
-#         alpha = np.tan(90 - angle)
-#         r = alpha * g_padded[row - 1][column + 1] + (1 - alpha) * g_padded[row - 1][column]
-#         p = alpha * g_padded[row + 1][column - 1] + (1 - alpha) * g_padded[row + 1][column]
-#     elif 90 < angle <= 135:
-#         alpha = np.tan(angle - 90)
-#         r = alpha * g_padded[row - 1][column - 1] + (1 - alpha) * g[row - 1][column]
-#         p = alpha * g_padded[row + 1][column + 1] + (1 - alpha) * g[row + 1][column]
-#     else:
-#         alpha = np.tan(180 - angle)
-#         r = alpha * g_padded[row - 1][column - 1] + (1 - alpha) * g_padded[row][column - 1]
-#         p = alpha * g_padded[row + 1][column + 1] + (1 - alpha) * g_padded[row][column + 1]
-
-#     if (intensity >= r) and (intensity >= p):
-#         return False
-#     else:
-#         return True
-    
-def pixel_suppressed(g, intensity, r_angle, row, column):
+def pixel_suppressed(g, r_angle, row, column):
     r_row, r_col, p_row, p_col = 0, 0, 0, 0
+    intensity = g[row][column]
 
     if r_angle == 0:
         r_row = row
         r_col = column + 1
         p_row = row
         p_col = column - 1
-    elif r_angle == 45:
+    elif r_angle == 135:
         r_row = row - 1
         r_col = column + 1
         p_row = row + 1
@@ -71,28 +50,14 @@ def pixel_suppressed(g, intensity, r_angle, row, column):
     else:
         p = 0
 
-    if (intensity >= r) and (intensity >= p):
-        return False
-    else:
-        return True
+    return not ((intensity >= r) and (intensity >= p))
 
 def canny(image, t_low, t_high):
     image_blur = cv2.GaussianBlur(image, (3, 3), 1)
-    edges = cv2.Canny(image_blur, 50, 200, None, 3)
-    #  Build Sobel filters
-    gx_mask = np.array([[-1, 0, 1],
-                        [-2, 0, 2],
-                        [-1, 0, 1]])
     
-    gy_mask = np.array([[1, 2, 1],
-                        [0, 0, 0],
-                        [-1, -2, -1]])
-    
-    # Apply Sobel filters to image
-    # gx = cv2.filter2D(image_blur, ddepth=0, kernel=gx_mask)
-    # gy = cv2.filter2D(image_blur, ddepth=0, kernel=gy_mask)
-    gx = cv2.Sobel(image_blur, 0, 1, 0, ksize=3)
-    gy = cv2.Sobel(image_blur, 0, 0, 1, ksize=3)
+    # Apply Scharr filters to image
+    gx = cv2.Scharr(image_blur, cv2.CV_16S, 1, 0)
+    gy = cv2.Scharr(image_blur, cv2.CV_16S, 0, 1)
 
     # Calculate gradient magnitude and direction
     g = np.hypot(gx, gy)
@@ -102,16 +67,29 @@ def canny(image, t_low, t_high):
     # Convert to degrees
     theta = np.rad2deg(theta)
 
-    suppress = np.zeros_like(image)
+    a = np.zeros((g.shape[0], g.shape[1], 3))
+
+    for row in range(0, a.shape[0]):
+        for column in range(0, a.shape[1]):
+            r_angle = round_angle(theta[row][column])
+            if r_angle == 0:
+                a[row][column] = [255, 0, 0]
+            if r_angle == 45:
+                a[row][column] = [0, 255, 0]
+            if r_angle == 90:
+                a[row][column] = [0, 0, 255]
+            if r_angle == 135:
+                a[row][column] = [255, 255, 255]
+
+    suppress = np.zeros_like(image, dtype=np.float32)
 
     # Non-maximum suppression
     for row in range(0, g.shape[0]):
         for column in range(0, g.shape[1]):
             angle = theta[row][column]
-            intensity = g[row][column]
             r_angle = round_angle(angle)
 
-            if pixel_suppressed(g, intensity, angle, row + 1, column + 1) == False:
+            if pixel_suppressed(g, r_angle, row, column) == False:
                 suppress[row][column] = g[row][column]
 
     output = np.zeros_like(suppress)
@@ -133,12 +111,12 @@ def canny(image, t_low, t_high):
                     r_angle = round_angle(angle)
 
                     # Get row and column of next pixel
-                    if angle == 0:
+                    if r_angle == 0:
                         new_c += 1
-                    elif angle == 45:
+                    elif r_angle == 135:
                         new_r -= 1
                         new_c += 1
-                    elif angle == 90:
+                    elif r_angle == 90:
                         new_r -= 1
                     else:
                         new_r -= 1
@@ -147,20 +125,20 @@ def canny(image, t_low, t_high):
                     next_angle = theta[new_r][new_c]
                     next_angle = round_angle(next_angle)
 
-                    if next_angle != r_angle:
-                        break
-
                     intensity = output[new_r][new_c]
 
     output[output < 255] = 0
 
     cv2.imshow("suppressed", suppress)
     cv2.imshow("output", output)
+    cv2.imshow("a", a)
     cv2.waitKey(0)
     cv2.destroyAllWindows()
 
+    return output.astype(np.uint8)
+
 def testCanny(folder_name):
-    image =  cv2.imread(folder_name + '/' + 'image2.png', cv2.IMREAD_GRAYSCALE)
+    image =  cv2.imread(folder_name + '/' + 'image9.png', cv2.IMREAD_GRAYSCALE)
     canny(image, 50, 150)
 
 def testTask1(folder_name):
@@ -175,10 +153,11 @@ def testTask1(folder_name):
     for index, row in task1_data.iterrows():
         image =  cv2.imread(folder_name + '/' + row['FileName'], cv2.IMREAD_GRAYSCALE)
         actual_angles.append(row['AngleInDegrees'])
-        edges = cv2.Canny(image, 50, 200, None, 3)
+        edges = canny(image, 50, 150)
         lines = cv2.HoughLines(edges, 1, np.pi / 180, 90, None, 0, 0)
 
         if lines is None:
+            print(row['FileName'])
             return
 
         cdst =  cv2.cvtColor(edges,  cv2.COLOR_GRAY2BGR)
@@ -283,5 +262,5 @@ def testTask3(iconFolderName, testFolderName):
 #         # The Task3 dataset has two directories, an annotation directory that contains the annotation and a png directory with list of images 
 #         testTask3(args.IconDataset,args.Task3Dataset)
 
-# testTask1('Task1Dataset')
-testCanny('Task1Dataset')
+testTask1('Task1Dataset')
+# testCanny('Task1Dataset')
