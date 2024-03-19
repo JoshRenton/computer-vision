@@ -3,7 +3,6 @@ import numpy as np
 import cv2
 import pandas as pd
 
-
 def HoughLines(edges, rho_res, theta_res, threshold):
     """
     Multiplies two numbers and returns the result.
@@ -62,6 +61,144 @@ def HoughLines(edges, rho_res, theta_res, threshold):
     polar_coordinates = np.vstack([final_rho, final_theta]).T
     return polar_coordinates
 
+def round_angle(angle):
+    if angle < 0:
+        angle += 180
+    if 0 <= angle < 22.5 or 157.5 <= angle <= 180:
+        return 0
+    elif 22.5 <= angle < 67.5:
+       return 45
+    elif 67.5 <= angle < 112.5:
+        return 90
+    else:
+        return 135
+    
+def pixel_suppressed(g, r_angle, row, column):
+    r_row, r_col, p_row, p_col = 0, 0, 0, 0
+    intensity = g[row][column]
+
+    if r_angle == 0:
+        r_row = row
+        r_col = column + 1
+        p_row = row
+        p_col = column - 1
+    elif r_angle == 135:
+        r_row = row - 1
+        r_col = column + 1
+        p_row = row + 1
+        p_col = column - 1
+    elif r_angle == 90:
+        r_row = row - 1
+        r_col = column
+        p_row = row + 1
+        p_col = column
+    else:
+        r_row = row - 1
+        r_col = column - 1
+        p_row = row + 1
+        p_col = column + 1
+
+    if 0 <= r_row < g.shape[0] and 0 <= r_col < g.shape[1]:
+        r = g[r_row][r_col]
+    else:
+        r = 0
+
+    if 0 <= p_row < g.shape[0] and 0 <= p_col < g.shape[1]:
+        p = g[p_row][p_col]
+    else:
+        p = 0
+
+    return not ((intensity >= r) and (intensity >= p))
+
+def canny(image, t_low, t_high):
+    image_blur = cv2.GaussianBlur(image, (3, 3), 1)
+    
+    # Apply Scharr filters to image
+    gx = cv2.Scharr(image_blur, cv2.CV_16S, 1, 0)
+    gy = cv2.Scharr(image_blur, cv2.CV_16S, 0, 1)
+
+    # Calculate gradient magnitude and direction
+    g = np.hypot(gx, gy)
+    theta = np.arctan2(gy, gx)
+    g = (g / g.max()) * 255
+
+    # Convert to degrees
+    theta = np.rad2deg(theta)
+
+    a = np.zeros((g.shape[0], g.shape[1], 3))
+
+    for row in range(0, a.shape[0]):
+        for column in range(0, a.shape[1]):
+            r_angle = round_angle(theta[row][column])
+            if r_angle == 0:
+                a[row][column] = [255, 0, 0]
+            if r_angle == 45:
+                a[row][column] = [0, 255, 0]
+            if r_angle == 90:
+                a[row][column] = [0, 0, 255]
+            if r_angle == 135:
+                a[row][column] = [255, 255, 255]
+
+    suppress = np.zeros_like(image, dtype=np.float32)
+
+    # Non-maximum suppression
+    for row in range(0, g.shape[0]):
+        for column in range(0, g.shape[1]):
+            angle = theta[row][column]
+            r_angle = round_angle(angle)
+
+            if pixel_suppressed(g, r_angle, row, column) == False:
+                suppress[row][column] = g[row][column]
+
+    output = np.zeros_like(suppress)
+
+    output[suppress < t_low] = 0
+    output[suppress >= t_low] = t_low
+    output[suppress >= t_high] = 255
+
+    # Hysteresis Thresholding
+    for row in range(0, g.shape[0]):
+        for column in range(0, g.shape[1]):
+            if output[row][column] == 255:
+                new_r = row
+                new_c = column
+                intensity = output[row][column]
+                while(intensity >= t_low):
+                    output[new_r][new_c] = 255
+                    angle = theta[new_r][new_c]
+                    r_angle = round_angle(angle)
+
+                    # Get row and column of next pixel
+                    if r_angle == 0:
+                        new_c += 1
+                    elif r_angle == 135:
+                        new_r -= 1
+                        new_c += 1
+                    elif r_angle == 90:
+                        new_r -= 1
+                    else:
+                        new_r -= 1
+                        new_c -= 1
+
+                    next_angle = theta[new_r][new_c]
+                    next_angle = round_angle(next_angle)
+
+                    intensity = output[new_r][new_c]
+
+    output[output < 255] = 0
+
+    cv2.imshow("suppressed", suppress)
+    cv2.imshow("output", output)
+    cv2.imshow("a", a)
+    cv2.waitKey(0)
+    cv2.destroyAllWindows()
+
+    return output.astype(np.uint8)
+
+def testCanny(folder_name):
+    image =  cv2.imread(folder_name + '/' + 'image9.png', cv2.IMREAD_GRAYSCALE)
+    canny(image, 50, 150)
+
 def testTask1(folder_name):
     # Read in data
     task1_data = pd.read_csv(folder_name+"/list.txt")
@@ -74,13 +211,14 @@ def testTask1(folder_name):
     for index, row in task1_data.iterrows():
         image =  cv2.imread(folder_name + '/' + row['FileName'], cv2.IMREAD_GRAYSCALE)
         actual_angles.append(row['AngleInDegrees'])
-        edges = cv2.Canny(image, 50, 200, None, 3)
+        edges = canny(image, 50, 150)
 
         # lines = cv2.HoughLines(edges, 1, np.pi / 180, 90, None, 0, 0)
         # 1 degree = pi / 180
         lines = HoughLines(edges, 1, math.radians(1), 90)
 
         if lines is None:
+            print(row['FileName'])
             return
 
         cdst =  cv2.cvtColor(edges,  cv2.COLOR_GRAY2BGR)
@@ -190,3 +328,4 @@ def testTask3(iconFolderName, testFolderName):
 #         testTask3(args.IconDataset,args.Task3Dataset)
 
 testTask1('Task1Dataset')
+# testCanny('Task1Dataset')
