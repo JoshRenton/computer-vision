@@ -111,11 +111,9 @@ def pixel_suppressed(g, r_angle, row, column):
     return not ((intensity >= r) and (intensity >= p))
 
 def canny(image, t_low, t_high):
-    image_blur = cv2.GaussianBlur(image, (3, 3), 1)
-    
     # Apply Scharr filters to image
-    gx = cv2.Scharr(image_blur, cv2.CV_16S, 1, 0)
-    gy = cv2.Scharr(image_blur, cv2.CV_16S, 0, 1)
+    gx = cv2.Scharr(image, cv2.CV_16S, 1, 0)
+    gy = cv2.Scharr(image, cv2.CV_16S, 0, 1)
 
     # Calculate gradient magnitude and direction
     g = np.hypot(gx, gy)
@@ -185,19 +183,17 @@ def canny(image, t_low, t_high):
 
                     intensity = output[new_r][new_c]
 
-    output[output < 255] = 0
-
-    cv2.imshow("suppressed", suppress)
-    cv2.imshow("output", output)
-    cv2.imshow("a", a)
-    cv2.waitKey(0)
-    cv2.destroyAllWindows()
+    # cv2.imshow("suppressed", suppress)
+    # cv2.imshow("a", a)
+    # cv2.imshow("output", output)
+    # cv2.waitKey(0)
+    # cv2.destroyAllWindows()
 
     return output.astype(np.uint8)
 
 def testCanny(folder_name):
     image =  cv2.imread(folder_name + '/' + 'image9.png', cv2.IMREAD_GRAYSCALE)
-    canny(image, 50, 150)
+    canny(image, 50, 200)
 
 def testTask1(folder_name):
     # Read in data
@@ -211,7 +207,7 @@ def testTask1(folder_name):
     for index, row in task1_data.iterrows():
         image =  cv2.imread(folder_name + '/' + row['FileName'], cv2.IMREAD_GRAYSCALE)
         actual_angles.append(row['AngleInDegrees'])
-        edges = canny(image, 50, 150)
+        edges = canny(image, 50, 200)
 
         # lines = cv2.HoughLines(edges, 1, np.pi / 180, 90, None, 0, 0)
         # 1 degree = pi / 180
@@ -267,11 +263,12 @@ def testTask1(folder_name):
             if (angle_between_lines > 180):
                 angle_between_lines = 360 - angle_between_lines
             predicted_angles.append(angle_between_lines)
+        else:
+            print(row['FileName'])
 
-    # Draw the lines
-    # cv2.imshow('Detected Lines', cdst)
-    # cv2.waitKey(0)
-    # cv2.destroyAllWindows()
+        # cv2.imshow('Detected Lines', cdst)
+        # cv2.waitKey(0)
+        # cv2.destroyAllWindows()
             
     # Calculate errors
     errors = np.abs(np.subtract(actual_angles, predicted_angles))
