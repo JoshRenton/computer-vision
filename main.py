@@ -111,6 +111,8 @@ def pixel_suppressed(g, r_angle, row, column):
     return not ((intensity >= r) and (intensity >= p))
 
 def canny(image, t_low, t_high):
+    # Blur the image and then apply Sobel in the x & y directions???
+
     # Apply Scharr filters to image
     gx = cv2.Scharr(image, cv2.CV_16S, 1, 0)
     gy = cv2.Scharr(image, cv2.CV_16S, 0, 1)
@@ -120,7 +122,6 @@ def canny(image, t_low, t_high):
     theta = np.arctan2(gy, gx)
     g = (g / g.max()) * 255
 
-    # Convert to degrees
     theta = np.rad2deg(theta)
 
     a = np.zeros((g.shape[0], g.shape[1], 3))
@@ -140,6 +141,7 @@ def canny(image, t_low, t_high):
     suppress = np.zeros_like(image, dtype=np.float32)
 
     # Non-maximum suppression
+    # For each pixel check if it's a local maximum (in its direction)
     for row in range(0, g.shape[0]):
         for column in range(0, g.shape[1]):
             angle = theta[row][column]
@@ -148,48 +150,35 @@ def canny(image, t_low, t_high):
             if pixel_suppressed(g, r_angle, row, column) == False:
                 suppress[row][column] = g[row][column]
 
-    output = np.zeros_like(suppress)
 
-    output[suppress < t_low] = 0
-    output[suppress >= t_low] = t_low
-    output[suppress >= t_high] = 255
+    # Hysteresis Thresholding to remove isolated weak edges
+    mask = np.zeros_like(suppress)
 
-    # Hysteresis Thresholding
-    for row in range(0, g.shape[0]):
-        for column in range(0, g.shape[1]):
-            if output[row][column] == 255:
-                new_r = row
-                new_c = column
-                intensity = output[row][column]
-                while(intensity >= t_low):
-                    output[new_r][new_c] = 255
-                    angle = theta[new_r][new_c]
-                    r_angle = round_angle(angle)
+    # Boolean array, True if the pixel is a weak/strong edge
+    strong_edges = (suppress >= t_high)
+    weak_edges = (suppress >= t_low)
 
-                    # Get row and column of next pixel
-                    if r_angle == 0:
-                        new_c += 1
-                    elif r_angle == 135:
-                        new_r -= 1
-                        new_c += 1
-                    elif r_angle == 90:
-                        new_r -= 1
-                    else:
-                        new_r -= 1
-                        new_c -= 1
+    # Each pixel is labeled with a number corresponding to its connected component
+    # uint8 to convert Boolean array to a 0/255 array
+    num_labels, labels = cv2.connectedComponents(np.uint8(weak_edges))
 
-                    next_angle = theta[new_r][new_c]
-                    next_angle = round_angle(next_angle)
+    # Look at each connected component and determine if it should be a strong edge
+    # Starting at 1 because 0 is the background
+    for label in range(1, num_labels):
+        # Boolean array of pixels in the current component
+        component = (labels == label)
 
-                    intensity = output[new_r][new_c]
+        componentContainsStrongEdge = np.any(component & strong_edges)
+        if componentContainsStrongEdge:
+            mask[component] = 255
+
+    return mask
 
     # cv2.imshow("suppressed", suppress)
     # cv2.imshow("a", a)
     # cv2.imshow("output", output)
     # cv2.waitKey(0)
     # cv2.destroyAllWindows()
-
-    return output.astype(np.uint8)
 
 def testCanny(folder_name):
     image =  cv2.imread(folder_name + '/' + 'image9.png', cv2.IMREAD_GRAYSCALE)
@@ -292,7 +281,6 @@ def testTask2(iconDir, testDir):
     # Check and calculate the Intersection Over Union (IoU) score
     # based on the IoU determine accuracy, TruePositives, FalsePositives, FalseNegatives
     return (Acc,TPR,FPR,FNR)
-
 
 def testTask3(iconFolderName, testFolderName):
     # assume that test folder name has a directory annotations with a list of csv files
