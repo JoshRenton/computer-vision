@@ -2,6 +2,7 @@ import math
 import numpy as np
 import cv2
 import pandas as pd
+import argparse
 
 def HoughLines(edges, rho_res, theta_res, threshold):
     """
@@ -112,8 +113,8 @@ def pixel_suppressed(g, r_angle, row, column):
 
 def canny(image, t_low, t_high):
     # Apply Scharr filters to image
-    gx = cv2.Scharr(image, cv2.CV_16S, 1, 0)
-    gy = cv2.Scharr(image, cv2.CV_16S, 0, 1)
+    gx = cv2.Sobel(image, cv2.CV_16S, 1, 0, ksize=3)
+    gy = cv2.Sobel(image, cv2.CV_16S, 0, 1, ksize=3)
 
     # Calculate gradient magnitude and direction
     g = np.hypot(gx, gy)
@@ -303,26 +304,26 @@ def testTask3(iconFolderName, testFolderName):
     return (Acc,TPR,FPR,FNR)
 
 
-# if __name__ == "__main__":
+if __name__ == "__main__":
 
-#     # parsing the command line path to directories and invoking the test scripts for each task
-#     parser = argparse.ArgumentParser("Data Parser")
-#     parser.add_argument("--Task1Dataset", help="Provide a folder that contains the Task 1 Dataset.", type=str, required=False)
-#     parser.add_argument("--IconDataset", help="Provide a folder that contains the Icon Dataset for Task2 and Task3.", type=str, required=False)
-#     parser.add_argument("--Task2Dataset", help="Provide a folder that contains the Task 2 test Dataset.", type=str, required=False)
-#     parser.add_argument("--Task3Dataset", help="Provide a folder that contains the Task 3 test Dataset.", type=str, required=False)
-#     args = parser.parse_args()
-#     if(args.Task1Dataset!=None):
-#         # This dataset has a list of png files and a txt file that has annotations of filenames and angle
-#         testTask1(args.Task1Dataset)
-#     if(args.IconDataset!=None and args.Task2Dataset!=None):
-#         # The Icon dataset has a directory that contains the icon image for each file
-#         # The Task2 dataset directory has two directories, an annotation directory that contains the annotation and a png directory with list of images 
-#         testTask2(args.IconDataset,args.Task2Dataset)
-#     if(args.IconDataset!=None and args.Task3Dataset!=None):
-#         # The Icon dataset directory contains an icon image for each file
-#         # The Task3 dataset has two directories, an annotation directory that contains the annotation and a png directory with list of images 
-#         testTask3(args.IconDataset,args.Task3Dataset)
+    # parsing the command line path to directories and invoking the test scripts for each task
+    parser = argparse.ArgumentParser("Data Parser")
+    parser.add_argument("--Task1Dataset", help="Provide a folder that contains the Task 1 Dataset.", type=str, required=False)
+    parser.add_argument("--IconDataset", help="Provide a folder that contains the Icon Dataset for Task2 and Task3.", type=str, required=False)
+    parser.add_argument("--Task2Dataset", help="Provide a folder that contains the Task 2 test Dataset.", type=str, required=False)
+    parser.add_argument("--Task3Dataset", help="Provide a folder that contains the Task 3 test Dataset.", type=str, required=False)
+    args = parser.parse_args()
+    if(args.Task1Dataset!=None):
+        # This dataset has a list of png files and a txt file that has annotations of filenames and angle
+        testTask1(args.Task1Dataset)
+    if(args.IconDataset!=None and args.Task2Dataset!=None):
+        # The Icon dataset has a directory that contains the icon image for each file
+        # The Task2 dataset directory has two directories, an annotation directory that contains the annotation and a png directory with list of images 
+        testTask2(args.IconDataset,args.Task2Dataset)
+    if(args.IconDataset!=None and args.Task3Dataset!=None):
+        # The Icon dataset directory contains an icon image for each file
+        # The Task3 dataset has two directories, an annotation directory that contains the annotation and a png directory with list of images 
+        testTask3(args.IconDataset,args.Task3Dataset)
 
-testTask1('Task1Dataset')
+# testTask1('Task1Dataset')
 # testCanny('Task1Dataset')
