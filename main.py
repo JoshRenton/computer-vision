@@ -2,6 +2,7 @@ import math
 import numpy as np
 import cv2
 import pandas as pd
+from matplotlib import pyplot as plt
 
 def HoughLines(edges, rho_res, theta_res, threshold):
     """
@@ -277,10 +278,60 @@ def testTask1(folder_name):
 def testTask2(iconDir, testDir):
     # assume that test folder name has a directory annotations with a list of csv files
     # load train images from iconDir and for each image from testDir, match it with each class from the iconDir to find the best match
+    
     # For each predicted class, check accuracy with the annotations
     # Check and calculate the Intersection Over Union (IoU) score
     # based on the IoU determine accuracy, TruePositives, FalsePositives, FalseNegatives
-    return (Acc,TPR,FPR,FNR)
+    # return (Acc,TPR,FPR,FNR)
+
+    img = cv2.imread('./Task2Dataset/images/test_image_1.png', cv2.IMREAD_GRAYSCALE)
+    img2 = img.copy()
+    template = cv2.imread('./IconDataset/png/045-museum.png', cv2.IMREAD_GRAYSCALE)
+
+    G = template.copy()
+    gpA = [G]
+    for i in range(5):
+        G = cv2.pyrDown(G)
+        gpA.append(G)
+
+    # blah = gpA[-1]
+    # print(blah.shape)
+
+    # All the 6 methods for comparison in a list
+    methods = ['cv2.TM_CCOEFF', 'cv2.TM_CCOEFF_NORMED', 'cv2.TM_CCORR',
+    'cv2.TM_CCORR_NORMED', 'cv2.TM_SQDIFF', 'cv2.TM_SQDIFF_NORMED']
+    # methods = ['cv2.TM_CCOEFF']
+    
+    for meth in methods:
+        for templ in gpA:
+            img = img2.copy()
+            method = eval(meth)
+            
+            # Apply template Matching
+            res = cv2.matchTemplate(img,templ,method)
+            min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(res)
+            print(min_val, max_val, min_loc, max_loc)
+            
+            # If the method is TM_SQDIFF or TM_SQDIFF_NORMED, take minimum
+            if method in [cv2.TM_SQDIFF, cv2.TM_SQDIFF_NORMED]:
+                top_left = min_loc
+            else:
+                top_left = max_loc
+
+            w, h = templ.shape[::-1]
+            bottom_right = (top_left[0] + w, top_left[1] + h)
+
+            print(top_left, bottom_right)
+            
+            cv2.rectangle(img,top_left, bottom_right, 0, 2)
+    
+            plt.subplot(121),plt.imshow(res,cmap = 'gray')
+            plt.title('Matching Result'), plt.xticks([]), plt.yticks([])
+            plt.subplot(122),plt.imshow(img,cmap = 'gray')
+            plt.title('Detected Point'), plt.xticks([]), plt.yticks([])
+            plt.suptitle(meth)
+            
+            plt.show()
 
 def testTask3(iconFolderName, testFolderName):
     # assume that test folder name has a directory annotations with a list of csv files
@@ -312,5 +363,6 @@ def testTask3(iconFolderName, testFolderName):
 #         # The Task3 dataset has two directories, an annotation directory that contains the annotation and a png directory with list of images 
 #         testTask3(args.IconDataset,args.Task3Dataset)
 
-testTask1('Task1Dataset')
+# testTask1('Task1Dataset')
 # testCanny('Task1Dataset')
+testTask2('ah', 'ah')
