@@ -3,6 +3,8 @@ import numpy as np
 import cv2
 import pandas as pd
 import argparse
+from skimage import feature
+from skimage.transform import hough_line, hough_line_peaks
 
 def HoughLines(edges, rho_res, theta_res, threshold):
     """
@@ -208,17 +210,24 @@ def testTask1(folder_name):
     for index, row in task1_data.iterrows():
         image =  cv2.imread(folder_name + '/' + row['FileName'], cv2.IMREAD_GRAYSCALE)
         actual_angles.append(row['AngleInDegrees'])
-        edges = canny(image, 50, 200)
+        # edges = canny(image, 50, 200)
+        edges = feature.canny(image)
 
         # lines = cv2.HoughLines(edges, 1, np.pi / 180, 90, None, 0, 0)
         # 1 degree = pi / 180
-        lines = HoughLines(edges, 1, math.radians(1), 90)
+        # lines = HoughLines(edges, 1, math.radians(1), 90)
+        h, theta, d = hough_line(edges)
+        _, theta, d = hough_line_peaks(h, theta, d)
+        lines = zip(d, theta)
+
+        # for rho, angle in zip(d, theta):
+        #     lines.append((rho, angle))
 
         if lines is None:
-            print(row['FileName'])
+            print("no lines detected for " + row['FileName'])
             return
 
-        cdst =  cv2.cvtColor(edges,  cv2.COLOR_GRAY2BGR)
+        cdst =  cv2.cvtColor(np.array(edges).astype(np.float32),  cv2.COLOR_GRAY2BGR)
         angles_deg = []
 
         # Able to work directly with the normal line because
@@ -238,7 +247,7 @@ def testTask1(folder_name):
                 theta = (theta + np.pi)
 
             angle = math.degrees(theta)
-            print("rho:", rho, "\t theta:", angle)
+            # print("rho:", rho, "\t theta:", angle)
 
             # If the angle is close to 360 degrees, assume it's a vertical line
             if abs(angle - 360) < 1.1:
