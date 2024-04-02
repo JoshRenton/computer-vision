@@ -275,6 +275,41 @@ def testTask1(folder_name):
 
     return(total_error)
 
+def build_gaussian_pyramid(image, downsamples):
+    G = image.copy()
+    gp = [G]
+    for i in range(0, downsamples):
+        G = cv2.pyrDown(G)
+        gp.append(G)
+    return gp
+
+def build_laplacian_pyramid(gp):
+    lp = []
+    pyr_height = len(gp)
+    for i in range(pyr_height - 1, 0, -1):
+        G = cv2.pyrUp(gp[i])
+        L = cv2.subtract(gp[i - 1], G)
+        lp.append(L)
+    return lp
+
+# Calculate correlation for given patch
+def correlation(template, img, offset_x, offset_y):
+    correlation = []
+    for y in range(0, template.shape[0]):
+        for x in range(0, template.shape[1]):
+            template_I = template[y][x]
+            img_I = img[y + offset_y][x + offset_x]
+            correlation.append(template_I * img_I)
+    return np.sum(correlation)
+
+def matchTemplate(lp_test, lp_template, method):
+    for test_index in range(0, len(lp_test)):
+        test_img = lp_test[test_index]
+        for template_index in range(0, len(lp_template)):
+            template = lp_template[template_index]
+
+    return
+
 def testTask2(iconDir, testDir):
     # assume that test folder name has a directory annotations with a list of csv files
     # load train images from iconDir and for each image from testDir, match it with each class from the iconDir to find the best match
@@ -288,22 +323,21 @@ def testTask2(iconDir, testDir):
     img2 = img.copy()
     template = cv2.imread('./IconDataset/png/045-museum.png', cv2.IMREAD_GRAYSCALE)
 
-    G = template.copy()
-    gpA = [G]
-    for i in range(5):
-        G = cv2.pyrDown(G)
-        gpA.append(G)
+    # Create laplacian pyramid for template
+    gp_template = build_gaussian_pyramid(template, 5)
+    lp_template = build_laplacian_pyramid(gp_template)
 
-    # blah = gpA[-1]
-    # print(blah.shape)
+    # Create laplacian pyramid for test image
+    gp_test = build_gaussian_pyramid(img, 5)
+    lp_test = build_laplacian_pyramid(gp_test)
 
     # All the 6 methods for comparison in a list
-    methods = ['cv2.TM_CCOEFF', 'cv2.TM_CCOEFF_NORMED', 'cv2.TM_CCORR',
-    'cv2.TM_CCORR_NORMED', 'cv2.TM_SQDIFF', 'cv2.TM_SQDIFF_NORMED']
-    # methods = ['cv2.TM_CCOEFF']
+    # methods = ['cv2.TM_CCOEFF', 'cv2.TM_CCOEFF_NORMED', 'cv2.TM_CCORR',
+    # 'cv2.TM_CCORR_NORMED', 'cv2.TM_SQDIFF', 'cv2.TM_SQDIFF_NORMED']
+    methods = ['cv2.TM_CCOEFF']
     
     for meth in methods:
-        for templ in gpA:
+        for templ in lp_template:
             img = img2.copy()
             method = eval(meth)
             
