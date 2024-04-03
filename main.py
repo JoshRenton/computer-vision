@@ -319,14 +319,14 @@ def evaluate_predictions(annotations, predicted_icons):
 
     # Iterate over each predicted class
     for prediction in predicted_icons:
-        icon_index = prediction[0]
+        icon_name = prediction[0]
         
         # Find the row in annotations that matches the index of the predicted icon
-        annotation = annotations[annotations['classname'].str.startswith(icon_index)]
+        annotation = annotations[annotations['classname'] == icon_name]
 
         # If there is no annotation for the predicted class, it is a false positive
         if annotation.empty:
-            print(f"Predicted icon {icon_index} but it doesn't exist in the image")
+            print(f"Predicted {icon_name} but it doesn't exist in the image")
             false_positives += 1
         else:
             # Get the coordinates of the predicted bounding box
@@ -348,7 +348,7 @@ def evaluate_predictions(annotations, predicted_icons):
             union_area = predicted_area + annotated_area - intersection_area
             iou = intersection_area / union_area
 
-            print(f"Predicted icon {icon_index} with IoU score {iou}")
+            print(f"Predicted {icon_name} with IoU score {iou}")
 
             # If the IoU score is above a threshold, it is a true positive
             # Because the predicted bounding box is considered a match to the annotated bounding box
@@ -358,15 +358,14 @@ def evaluate_predictions(annotations, predicted_icons):
                 false_positives += 1
 
     for _, annotation in annotations.iterrows():
-        icon_index = annotation['classname'].split('-')[0]
-        matching_predicitons = [x[0] == icon_index for x in predicted_icons]
-        prediction_missing = sum(matching_predicitons) == 0
+        icon_name = annotation['classname']
+        prediction_missing = not any(prediction[0] == icon_name for prediction in predicted_icons)
 
         # Checking if the array contains just false
         if prediction_missing:
             # Failed to predict an icon that exists in the image
             false_negatives += 1
-            print(f"Failed to predict icon {icon_index}")
+            print(f"Failed to predict icon {icon_name}")
 
     return (true_positives, false_positives, false_negatives)
 
@@ -381,9 +380,12 @@ def testTask2(iconDir, testDir):
     # Retrieve all the icons
     icon_folder = './IconDataset/png'
     icons = []
+    icon_names = []
     for filename in os.listdir(icon_folder):
+        # Remove the leading zero and the file extension
+        icon_names.append(filename[1:].rsplit(".", 1)[0])
+
         icon_path = os.path.join(icon_folder, filename)
-        # print(icon_path)
         # TODO: Color???
         icon = cv2.imread(icon_path, cv2.IMREAD_GRAYSCALE)
         blurred_icon = cv2.GaussianBlur(icon, ksize=(5,5), sigmaX=0)
@@ -411,13 +413,13 @@ def testTask2(iconDir, testDir):
     overall_FNs = 0
 
     for image_index, image in enumerate(images):
-        # icon index, top, left, bottom, right
+        # icon name, top, left, bottom, right
         predicted_icons = []
 
         display_image = image.copy()
         
         # Predict which icons are in the image
-        for icon_index, icon in enumerate(icons):
+        for icon_name, icon in zip(icon_names, icons):
             # score, location, template_index
             best_match = (0, 0, -1)
             templates = build_gaussian_pyramid(icon, 4)
@@ -443,7 +445,7 @@ def testTask2(iconDir, testDir):
                 continue
 
             # TODO: Understand how the max_loc from minMaxLoc is used to get the location on the original image
-            print(f"Score for icon {icon_index + 1} = {best_match[0]} with template {best_match[2]} @ {best_match[1]}")
+            print(f"Score for {icon_name} = {best_match[0]} with template {best_match[2]} @ {best_match[1]}")
 
             best_template = templates[best_match[2]]
             w, h = best_template.shape[::-1]
@@ -455,12 +457,14 @@ def testTask2(iconDir, testDir):
             print("")
 
             # Add the predicted icon
-            # Do we need to know the template index? -> yes when scaling back up?
-            str_icon_index = f"{icon_index + 1:02d}" # Padding with 0s to match the annotations
-            predicted_icons.append([str_icon_index, *top_left, *bottom_right])
+            # TODO: Do we need to know the template index? -> yes when scaling back up?
+            predicted_icons.append([icon_name, *top_left, *bottom_right])
             
             # Bounding box
             cv2.rectangle(display_image, top_left, bottom_right, 0, 2)
+            font = cv2.FONT_HERSHEY_SIMPLEX
+            bottom_left = (top_left[0], top_left[1] - 5)  # Position the text at the bottom left of the rectangle
+            cv2.putText(display_image, icon_name, bottom_left, font, 0.5, 0, 1, cv2.LINE_AA)
             # Plots
             # res = cv2.matchTemplate(image, best_template, method)
             # plt.subplot(121),plt.imshow(res,cmap = 'gray')
@@ -479,10 +483,10 @@ def testTask2(iconDir, testDir):
         overall_FNs += false_negatives
 
         # Show all the detected icons in the current image
-        # plt.imshow(display_image, cmap='gray')
-        # plt.title(f'Image {image_index} - Detected Icons')
-        # plt.xticks([]), plt.yticks([])
-        # plt.show()
+        plt.imshow(display_image, cmap='gray')
+        plt.title(f'Image {image_index + 1}')
+        plt.xticks([]), plt.yticks([])
+        plt.show()
 
     # Evaluate the performance over all images
     print(f"Overall TPs: {overall_TPs}, Overall FPs: {overall_FPs}, Overall FNs: {overall_FNs}")
