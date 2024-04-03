@@ -3,6 +3,7 @@ import numpy as np
 import cv2
 import pandas as pd
 from matplotlib import pyplot as plt
+import os
 
 def HoughLines(edges, rho_res, theta_res, threshold):
     """
@@ -277,11 +278,13 @@ def testTask1(folder_name):
 
 def build_gaussian_pyramid(image, downsamples):
     G = image.copy()
-    gp = [G]
-    for i in range(0, downsamples):
+    pyramid = [G]
+    for i in range(downsamples):
+        # TODO: Downsample at a slower rate like 10% - image = cv2.resize(image, None, fx=0.9, fy=0.9, interpolation=cv2.INTER_AREA)
+        # TODO: Start the template at a smaller scale???
         G = cv2.pyrDown(G)
-        gp.append(G)
-    return gp
+        pyramid.append(G)
+    return pyramid
 
 def build_laplacian_pyramid(gp):
     lp = []
@@ -307,65 +310,194 @@ def matchTemplate(lp_test, lp_template, method):
         test_img = lp_test[test_index]
         for template_index in range(0, len(lp_template)):
             template = lp_template[template_index]
-
     return
+
+def evaluate_predictions(annotations, predicted_icons):
+    true_positives = 0
+    false_positives = 0
+    false_negatives = 0
+
+    # Iterate over each predicted class
+    for prediction in predicted_icons:
+        icon_index = prediction[0]
+        
+        # Find the row in annotations that matches the index of the predicted icon
+        annotation = annotations[annotations['classname'].str.startswith(icon_index)]
+
+        # If there is no annotation for the predicted class, it is a false positive
+        if annotation.empty:
+            print(f"Predicted icon {icon_index} but it doesn't exist in the image")
+            false_positives += 1
+        else:
+            # Get the coordinates of the predicted bounding box
+            predicted_top = prediction[1]
+            predicted_left = prediction[2]
+            predicted_bottom = prediction[3]
+            predicted_right = prediction[4]
+
+            # Get the coordinates of the annotated bounding box
+            annotated_top = annotation['top'].values[0]
+            annotated_left = annotation['left'].values[0]
+            annotated_bottom = annotation['bottom'].values[0]
+            annotated_right = annotation['right'].values[0]
+
+            # Calculate the intersection over union (IoU) score
+            intersection_area = max(0, min(predicted_bottom, annotated_bottom) - max(predicted_top, annotated_top)) * max(0, min(predicted_right, annotated_right) - max(predicted_left, annotated_left))
+            predicted_area = (predicted_bottom - predicted_top) * (predicted_right - predicted_left)
+            annotated_area = (annotated_bottom - annotated_top) * (annotated_right - annotated_left)
+            union_area = predicted_area + annotated_area - intersection_area
+            iou = intersection_area / union_area
+
+            print(f"Predicted icon {icon_index} with IoU score {iou}")
+
+            # If the IoU score is above a threshold, it is a true positive
+            # Because the predicted bounding box is considered a match to the annotated bounding box
+            if iou >= 0.5:
+                true_positives += 1
+            else:
+                false_positives += 1
+
+    for _, annotation in annotations.iterrows():
+        icon_index = annotation['classname'].split('-')[0]
+        matching_predicitons = [x[0] == icon_index for x in predicted_icons]
+        prediction_missing = sum(matching_predicitons) == 0
+
+        # Checking if the array contains just false
+        if prediction_missing:
+            # Failed to predict an icon that exists in the image
+            false_negatives += 1
+            print(f"Failed to predict icon {icon_index}")
+
+    return (true_positives, false_positives, false_negatives)
 
 def testTask2(iconDir, testDir):
     # assume that test folder name has a directory annotations with a list of csv files
     # load train images from iconDir and for each image from testDir, match it with each class from the iconDir to find the best match
-    
     # For each predicted class, check accuracy with the annotations
     # Check and calculate the Intersection Over Union (IoU) score
-    # based on the IoU determine accuracy, TruePositives, FalsePositives, FalseNegatives
+    # based on the IoU determine acceracy, TruePositives, FalsePositives, FalseNegatives
     # return (Acc,TPR,FPR,FNR)
 
-    img = cv2.imread('./Task2Dataset/images/test_image_1.png', cv2.IMREAD_GRAYSCALE)
-    img2 = img.copy()
-    template = cv2.imread('./IconDataset/png/045-museum.png', cv2.IMREAD_GRAYSCALE)
+    # Retrieve all the icons
+    icon_folder = './IconDataset/png'
+    icons = []
+    for filename in os.listdir(icon_folder):
+        icon_path = os.path.join(icon_folder, filename)
+        # print(icon_path)
+        # TODO: Color???
+        icon = cv2.imread(icon_path, cv2.IMREAD_GRAYSCALE)
+        blurred_icon = cv2.GaussianBlur(icon, ksize=(5,5), sigmaX=0)
+        icons.append(blurred_icon)
 
-    # Create laplacian pyramid for template
-    gp_template = build_gaussian_pyramid(template, 5)
-    lp_template = build_laplacian_pyramid(gp_template)
+    image_folder = './Task2Dataset/images'
+    images = []
+    image_names = os.listdir(image_folder)
+    # Sorts on the number at the end of the filename
+    sorted_image_names = sorted(image_names, key=lambda x: int(x.split('_')[2].split('.')[0]))
+    for filename in sorted_image_names:
+        image_path = os.path.join(image_folder, filename)
+        # TODO: Color???
+        image = cv2.imread(image_path, cv2.IMREAD_GRAYSCALE)
+        blurred_image = cv2.GaussianBlur(image, ksize=(5,5), sigmaX=0)
+        images.append(blurred_image)
 
-    # Create laplacian pyramid for test image
-    gp_test = build_gaussian_pyramid(img, 5)
-    lp_test = build_laplacian_pyramid(gp_test)
-
-    # All the 6 methods for comparison in a list
     # methods = ['cv2.TM_CCOEFF', 'cv2.TM_CCOEFF_NORMED', 'cv2.TM_CCORR',
     # 'cv2.TM_CCORR_NORMED', 'cv2.TM_SQDIFF', 'cv2.TM_SQDIFF_NORMED']
-    methods = ['cv2.TM_CCOEFF']
-    
-    for meth in methods:
-        for templ in lp_template:
-            img = img2.copy()
-            method = eval(meth)
-            
-            # Apply template Matching
-            res = cv2.matchTemplate(img,templ,method)
-            min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(res)
-            print(min_val, max_val, min_loc, max_loc)
-            
-            # If the method is TM_SQDIFF or TM_SQDIFF_NORMED, take minimum
-            if method in [cv2.TM_SQDIFF, cv2.TM_SQDIFF_NORMED]:
-                top_left = min_loc
-            else:
-                top_left = max_loc
+    method = ['cv2.TM_CCOEFF_NORMED']
+    method = eval(method[0])
 
-            w, h = templ.shape[::-1]
+    overall_TPs = 0
+    overall_FPs = 0
+    overall_FNs = 0
+
+    for image_index, image in enumerate(images):
+        # icon index, top, left, bottom, right
+        predicted_icons = []
+
+        display_image = image.copy()
+        
+        # Predict which icons are in the image
+        for icon_index, icon in enumerate(icons):
+            # score, location, template_index
+            best_match = (0, 0, -1)
+            templates = build_gaussian_pyramid(icon, 4)
+            
+            # # Create laplacian pyramid for template
+            # gp_template = build_gaussian_pyramid(template, 5)
+            # lp_template = build_laplacian_pyramid(gp_template)
+            # # Create laplacian pyramid for test image
+            # gp_test = build_gaussian_pyramid(img, 5)
+            # lp_test = build_laplacian_pyramid(gp_test)
+
+            # Multi-scale template matching, keeping only the best match
+            for idx, templ in enumerate(templates):
+                result = cv2.matchTemplate(image, templ, method)
+                _, max_val, _, max_loc = cv2.minMaxLoc(result)
+
+                if best_match[0] < max_val:
+                    # Update best_match
+                    best_match = (max_val, max_loc, idx) 
+
+            # Thresholding to prevent false positives
+            if (best_match[0] < 0.95):
+                continue
+
+            # TODO: Understand how the max_loc from minMaxLoc is used to get the location on the original image
+            print(f"Score for icon {icon_index + 1} = {best_match[0]} with template {best_match[2]} @ {best_match[1]}")
+
+            best_template = templates[best_match[2]]
+            w, h = best_template.shape[::-1]
+            top_left = best_match[1]
             bottom_right = (top_left[0] + w, top_left[1] + h)
 
             print(top_left, bottom_right)
+            print(best_match)
+            print("")
+
+            # Add the predicted icon
+            # Do we need to know the template index? -> yes when scaling back up?
+            str_icon_index = f"{icon_index + 1:02d}" # Padding with 0s to match the annotations
+            predicted_icons.append([str_icon_index, *top_left, *bottom_right])
             
-            cv2.rectangle(img,top_left, bottom_right, 0, 2)
-    
-            plt.subplot(121),plt.imshow(res,cmap = 'gray')
-            plt.title('Matching Result'), plt.xticks([]), plt.yticks([])
-            plt.subplot(122),plt.imshow(img,cmap = 'gray')
-            plt.title('Detected Point'), plt.xticks([]), plt.yticks([])
-            plt.suptitle(meth)
-            
-            plt.show()
+            # Bounding box
+            cv2.rectangle(display_image, top_left, bottom_right, 0, 2)
+            # Plots
+            # res = cv2.matchTemplate(image, best_template, method)
+            # plt.subplot(121),plt.imshow(res,cmap = 'gray')
+            # plt.title('Matching Result'), plt.xticks([]), plt.yticks([])
+            # plt.subplot(122),plt.imshow(display_image,cmap = 'gray')
+            # plt.title('Detected Point'), plt.xticks([]), plt.yticks([])
+            # plt.suptitle('Template ' + str(best_match[2]))
+            # plt.show()
+
+        # Evaluate the predicted icons
+        annotations = pd.read_csv(f'./Task2Dataset/annotations/test_image_{image_index + 1}.csv')
+        (true_positives, false_positives, false_negatives) = evaluate_predictions(annotations, predicted_icons)
+
+        overall_TPs += true_positives
+        overall_FPs += false_positives
+        overall_FNs += false_negatives
+
+        # Show all the detected icons in the current image
+        # plt.imshow(display_image, cmap='gray')
+        # plt.title(f'Image {image_index} - Detected Icons')
+        # plt.xticks([]), plt.yticks([])
+        # plt.show()
+
+    # Evaluate the performance over all images
+    print(f"Overall TPs: {overall_TPs}, Overall FPs: {overall_FPs}, Overall FNs: {overall_FNs}")
+
+    # How often it detected an object when the object was not there
+    # false_positive_rate = false_positives / (false_positives + true_negatives)
+    # false_positive_rate = false_positives / (false_positives + true_positives)
+    # false_negative_rate = false_negatives / (false_negatives + true_positives)
+    true_positive_rate = true_positives / (true_positives + false_negatives)
+
+    accuracy = overall_TPs / (overall_TPs + overall_FPs + overall_FNs)
+    precision = overall_TPs / (overall_TPs + overall_FPs)
+    recall = overall_TPs / (overall_TPs + overall_FNs)
+    # Return the results
+    print(f"Accuracy: {accuracy}, Precision: {precision}, Recall: {recall}, True Positive Rate: {true_positive_rate}")
 
 def testTask3(iconFolderName, testFolderName):
     # assume that test folder name has a directory annotations with a list of csv files
