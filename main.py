@@ -295,22 +295,36 @@ def build_laplacian_pyramid(gp):
         lp.append(L)
     return lp
 
+def normalize_img(img):
+    norm_img = (img - np.mean(img)) / np.sqrt(np.sum(np.square(img - np.mean(img))))
+    return norm_img
+
 # Calculate correlation for given patch
 def correlation(template, img, offset_x, offset_y):
-    correlation = []
-    for y in range(0, template.shape[0]):
-        for x in range(0, template.shape[1]):
-            template_I = template[y][x]
-            img_I = img[y + offset_y][x + offset_x]
-            correlation.append(template_I * img_I)
+    img_patch = img[offset_y:offset_y + template.shape[0], offset_x:offset_x + template.shape[1]]
+    correlation = img_patch * template
     return np.sum(correlation)
 
-def matchTemplate(lp_test, lp_template, method):
-    for test_index in range(0, len(lp_test)):
-        test_img = lp_test[test_index]
-        for template_index in range(0, len(lp_template)):
-            template = lp_template[template_index]
-    return
+def matchTemplate(img, template):
+    if template.shape[1] > img.shape[1] or template.shape[0] > img.shape[0]:
+        return np.array([0])
+    
+    norm_template = normalize_img(template)
+    corr_scores = np.zeros((img.shape[0] - template.shape[0] + 1, img.shape[1] - template.shape[1] + 1))
+    for y in range(0, img.shape[0] - template.shape[0] + 1):
+        for x in range(0, img.shape[1] - template.shape[1] + 1):
+            corr = correlation(norm_template, img, x, y)
+            corr_scores[y][x] = corr
+
+    return corr_scores
+
+def minMaxLoc(corr):
+    min_value = np.min(corr)
+    max_value = np.max(corr)
+    min_index = np.unravel_index(np.argmin(corr, axis=None), corr.shape)
+    max_index = np.unravel_index(np.argmax(corr, axis=None), corr.shape)
+    # Have to flip because of opencv reversing (x,y) coordinates
+    return min_value, max_value, np.flip(min_index), np.flip(max_index)
 
 def evaluate_predictions(annotations, predicted_icons):
     true_positives = 0
@@ -417,28 +431,24 @@ def testTask2(iconDir, testDir):
         predicted_icons = []
 
         display_image = image.copy()
+
+        norm_img = normalize_img(image)
         
         # Predict which icons are in the image
         for icon_name, icon in zip(icon_names, icons):
             # score, location, template_index
             best_match = (0, 0, -1)
             templates = build_gaussian_pyramid(icon, 4)
-            
-            # # Create laplacian pyramid for template
-            # gp_template = build_gaussian_pyramid(template, 5)
-            # lp_template = build_laplacian_pyramid(gp_template)
-            # # Create laplacian pyramid for test image
-            # gp_test = build_gaussian_pyramid(img, 5)
-            # lp_test = build_laplacian_pyramid(gp_test)
+            # templates = build_laplacian_pyramid(templates)
 
             # Multi-scale template matching, keeping only the best match
             for idx, templ in enumerate(templates):
-                result = cv2.matchTemplate(image, templ, method)
+                result = matchTemplate(norm_img, templ)
                 _, max_val, _, max_loc = cv2.minMaxLoc(result)
 
                 if best_match[0] < max_val:
                     # Update best_match
-                    best_match = (max_val, max_loc, idx) 
+                    best_match = (max_val, max_loc, idx)
 
             # Thresholding to prevent false positives
             if (best_match[0] < 0.95):
