@@ -296,14 +296,18 @@ def build_laplacian_pyramid(gp):
     return lp
 
 def normalize_img(img):
-    norm_img = (img - np.mean(img)) / np.sqrt(np.sum(np.square(img - np.mean(img))))
+    norm_img = img - np.mean(img)
     return norm_img
 
 # Calculate correlation for given patch
 def correlation(template, img, offset_x, offset_y):
     img_patch = img[offset_y:offset_y + template.shape[0], offset_x:offset_x + template.shape[1]]
+    img_std = np.std(img_patch)
+    if img_std == 0:
+        return -1
     correlation = img_patch * template
-    return np.sum(correlation)
+    correlation = correlation / (img_std * np.std(template))
+    return np.sum(correlation) / (template.shape[0] * template.shape[1])
 
 def matchTemplate(img, template):
     if template.shape[1] > img.shape[1] or template.shape[0] > img.shape[0]:
@@ -430,73 +434,74 @@ def testTask2(iconDir, testDir):
         # icon name, top, left, bottom, right
         predicted_icons = []
 
-        display_image = image.copy()
+        img_pyr = build_gaussian_pyramid(image, 2)
+        for layer in range(len(img_pyr) - 1, 0, -1):
 
-        norm_img = normalize_img(image)
-        
-        # Predict which icons are in the image
-        for icon_name, icon in zip(icon_names, icons):
-            # score, location, template_index
-            best_match = (0, 0, -1)
-            templates = build_gaussian_pyramid(icon, 4)
-            # templates = build_laplacian_pyramid(templates)
-
-            # Multi-scale template matching, keeping only the best match
-            for idx, templ in enumerate(templates):
-                result = matchTemplate(norm_img, templ)
-                _, max_val, _, max_loc = cv2.minMaxLoc(result)
-
-                if best_match[0] < max_val:
-                    # Update best_match
-                    best_match = (max_val, max_loc, idx)
-
-            # Thresholding to prevent false positives
-            if (best_match[0] < 0.95):
-                continue
-
-            # TODO: Understand how the max_loc from minMaxLoc is used to get the location on the original image
-            print(f"Score for {icon_name} = {best_match[0]} with template {best_match[2]} @ {best_match[1]}")
-
-            best_template = templates[best_match[2]]
-            w, h = best_template.shape[::-1]
-            top_left = best_match[1]
-            bottom_right = (top_left[0] + w, top_left[1] + h)
-
-            print(top_left, bottom_right)
-            print(best_match)
-            print("")
-
-            # Add the predicted icon
-            # TODO: Do we need to know the template index? -> yes when scaling back up?
-            predicted_icons.append([icon_name, *top_left, *bottom_right])
+            img = img_pyr[2]
+            display_image = img.copy()
             
-            # Bounding box
-            cv2.rectangle(display_image, top_left, bottom_right, 0, 2)
-            font = cv2.FONT_HERSHEY_SIMPLEX
-            bottom_left = (top_left[0], top_left[1] - 5)  # Position the text at the bottom left of the rectangle
-            cv2.putText(display_image, icon_name, bottom_left, font, 0.5, 0, 1, cv2.LINE_AA)
-            # Plots
-            # res = cv2.matchTemplate(image, best_template, method)
-            # plt.subplot(121),plt.imshow(res,cmap = 'gray')
-            # plt.title('Matching Result'), plt.xticks([]), plt.yticks([])
-            # plt.subplot(122),plt.imshow(display_image,cmap = 'gray')
-            # plt.title('Detected Point'), plt.xticks([]), plt.yticks([])
-            # plt.suptitle('Template ' + str(best_match[2]))
-            # plt.show()
+            # Predict which icons are in the image
+            for icon_name, icon in zip(icon_names, icons):
+                # score, location, template_index
+                best_match = (0, 0, -1)
+                templates = build_gaussian_pyramid(icon, 6)
 
-        # Evaluate the predicted icons
-        annotations = pd.read_csv(f'./Task2Dataset/annotations/test_image_{image_index + 1}.csv')
-        (true_positives, false_positives, false_negatives) = evaluate_predictions(annotations, predicted_icons)
+                # Multi-scale template matching, keeping only the best match
+                for idx, templ in enumerate(templates):
+                    result = matchTemplate(img, templ)
+                    _, max_val, _, max_loc = cv2.minMaxLoc(result)
 
-        overall_TPs += true_positives
-        overall_FPs += false_positives
-        overall_FNs += false_negatives
+                    if best_match[0] < max_val:
+                        # Update best_match
+                        best_match = (max_val, max_loc, idx)
 
-        # Show all the detected icons in the current image
-        plt.imshow(display_image, cmap='gray')
-        plt.title(f'Image {image_index + 1}')
-        plt.xticks([]), plt.yticks([])
-        plt.show()
+                # Thresholding to prevent false positives
+                if (best_match[0] < 0.95):
+                    continue
+
+                # TODO: Understand how the max_loc from minMaxLoc is used to get the location on the original image
+                print(f"Score for {icon_name} = {best_match[0]} with template {best_match[2]} @ {best_match[1]}")
+
+                best_template = templates[best_match[2]]
+                w, h = best_template.shape[::-1]
+                top_left = best_match[1]
+                bottom_right = (top_left[0] + w, top_left[1] + h)
+
+                print(top_left, bottom_right)
+                print(best_match)
+                print("")
+
+                # Add the predicted icon
+                # TODO: Do we need to know the template index? -> yes when scaling back up?
+                predicted_icons.append([icon_name, *top_left, *bottom_right])
+                
+                # Bounding box
+                cv2.rectangle(display_image, top_left, bottom_right, 0, 2)
+                font = cv2.FONT_HERSHEY_SIMPLEX
+                bottom_left = (top_left[0], top_left[1] - 5)  # Position the text at the bottom left of the rectangle
+                cv2.putText(display_image, icon_name, bottom_left, font, 0.5, 0, 1, cv2.LINE_AA)
+                # Plots
+                # res = cv2.matchTemplate(image, best_template, method)
+                # plt.subplot(121),plt.imshow(res,cmap = 'gray')
+                # plt.title('Matching Result'), plt.xticks([]), plt.yticks([])
+                # plt.subplot(122),plt.imshow(display_image,cmap = 'gray')
+                # plt.title('Detected Point'), plt.xticks([]), plt.yticks([])
+                # plt.suptitle('Template ' + str(best_match[2]))
+                # plt.show()
+
+            # Evaluate the predicted icons
+            annotations = pd.read_csv(f'./Task2Dataset/annotations/test_image_{image_index + 1}.csv')
+            (true_positives, false_positives, false_negatives) = evaluate_predictions(annotations, predicted_icons)
+
+            overall_TPs += true_positives
+            overall_FPs += false_positives
+            overall_FNs += false_negatives
+
+            # Show all the detected icons in the current image
+            plt.imshow(display_image, cmap='gray')
+            plt.title(f'Image {image_index + 1}')
+            plt.xticks([]), plt.yticks([])
+            plt.show()
 
     # Evaluate the performance over all images
     print(f"Overall TPs: {overall_TPs}, Overall FPs: {overall_FPs}, Overall FNs: {overall_FNs}")
