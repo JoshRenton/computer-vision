@@ -322,6 +322,29 @@ def matchTemplate(img, template):
 
     return corr_scores
 
+def matchTemplateWithCoords(img, template, coords):
+    if template.shape[1] > img.shape[1] or template.shape[0] > img.shape[0]:
+        return None, None
+    
+    norm_template = normalize_img(template)
+    corr_scores = []
+    corr_coords = []
+
+    test_x, test_y = coords
+
+    for y in range(test_y - 10, test_y + 10):
+        if y >= 0 and y < img.shape[0] - template.shape[0] + 1:
+            for x in range(test_x - 10, test_x + 10):
+                if x >= 0 and x < img.shape[1] - template.shape[1] + 1:
+                    corr = correlation(norm_template, img, x, y)
+                    corr_scores.append(corr)
+                    corr_coords.append((x, y))
+
+    if len(corr_scores) == 0:
+        return None, None
+
+    return corr_scores, corr_coords
+
 def minMaxLoc(corr):
     min_value = np.min(corr)
     max_value = np.max(corr)
@@ -387,6 +410,57 @@ def evaluate_predictions(annotations, predicted_icons):
 
     return (true_positives, false_positives, false_negatives)
 
+def searchImage(img, test_icons, test_coords):
+    predicted_icons = []
+    index = 0
+
+    for icon_name, icon in test_icons:
+        best_match = (0, 0, -1)
+        templates = build_gaussian_pyramid(icon, 6)
+        
+        # Multi-scale template matching, keeping only the best match
+        # Only do full search of all templates on smallest image size
+        if test_coords == None:
+            for idx, templ in enumerate(templates):
+                result = matchTemplate(img, templ)
+                _, max_val, _, max_loc = cv2.minMaxLoc(result)
+
+                if best_match[0] < max_val:
+                    # Update best_match
+                    best_match = (max_val, max_loc, idx)
+        else:
+            # Search for icons identified in previous layer around the matching upscaled coords
+            for idx, templ in enumerate(templates):
+                result, result_coords = matchTemplateWithCoords(img, templ, test_coords[index])
+                if result == None or result_coords == None:
+                    continue
+                max_index = np.argmax(result)
+                max_val = result[max_index]
+                max_loc = result_coords[max_index]
+
+                if best_match[0] < max_val:
+                    # Update best_match
+                    best_match = (max_val, max_loc, idx)
+
+            index += 1
+
+        # Thresholding to prevent false positives
+        # Increased threshold after lowest resolution search
+        if test_coords == None:
+            if (best_match[0] < 0.85):
+                continue
+        else:
+            if (best_match[0] < 0.95):
+                continue
+
+        best_template = templates[best_match[2]]
+        match_size = best_template.shape[::-1]
+
+        predicted_icons.append([icon_name, best_match, match_size])
+    
+    return predicted_icons
+
+
 def testTask2(iconDir, testDir):
     # assume that test folder name has a directory annotations with a list of csv files
     # load train images from iconDir and for each image from testDir, match it with each class from the iconDir to find the best match
@@ -432,48 +506,43 @@ def testTask2(iconDir, testDir):
 
     for image_index, image in enumerate(images):
         # icon name, top, left, bottom, right
-        predicted_icons = []
+        test_icons = zip(icon_names, icons)
+        test_coords = None
 
-        img_pyr = build_gaussian_pyramid(image, 2)
-        for layer in range(len(img_pyr) - 1, 0, -1):
+        # Create gaussian pyramid of test_image
+        img_pyr = build_gaussian_pyramid(image, 3)
+        # Start at smallest resolution
+        for layer in range(len(img_pyr) - 1, -1, -1):
 
-            img = img_pyr[2]
+            img = img_pyr[layer]
+            norm_img = normalize_img(img)
             display_image = img.copy()
             
             # Predict which icons are in the image
-            for icon_name, icon in zip(icon_names, icons):
-                # score, location, template_index
-                best_match = (0, 0, -1)
-                templates = build_gaussian_pyramid(icon, 6)
+            predicted_icons = searchImage(norm_img, test_icons, test_coords)
+            test_icons = []
+            test_coords = []
+            predictions = []
 
-                # Multi-scale template matching, keeping only the best match
-                for idx, templ in enumerate(templates):
-                    result = matchTemplate(img, templ)
-                    _, max_val, _, max_loc = cv2.minMaxLoc(result)
+            for match in predicted_icons:
+                icon_name = match[0]
+                best_match = match[1]
+                match_size = match[2]
 
-                    if best_match[0] < max_val:
-                        # Update best_match
-                        best_match = (max_val, max_loc, idx)
-
-                # Thresholding to prevent false positives
-                if (best_match[0] < 0.95):
-                    continue
+                icon_index = icon_names.index(icon_name)
+                test_icons.append((icon_name, icons[icon_index]))
+                test_coords.append((best_match[1][0] * 2, best_match[1][1] * 2))
 
                 # TODO: Understand how the max_loc from minMaxLoc is used to get the location on the original image
                 print(f"Score for {icon_name} = {best_match[0]} with template {best_match[2]} @ {best_match[1]}")
 
-                best_template = templates[best_match[2]]
-                w, h = best_template.shape[::-1]
+                w, h = match_size
                 top_left = best_match[1]
                 bottom_right = (top_left[0] + w, top_left[1] + h)
 
                 print(top_left, bottom_right)
                 print(best_match)
                 print("")
-
-                # Add the predicted icon
-                # TODO: Do we need to know the template index? -> yes when scaling back up?
-                predicted_icons.append([icon_name, *top_left, *bottom_right])
                 
                 # Bounding box
                 cv2.rectangle(display_image, top_left, bottom_right, 0, 2)
@@ -489,13 +558,15 @@ def testTask2(iconDir, testDir):
                 # plt.suptitle('Template ' + str(best_match[2]))
                 # plt.show()
 
+                predictions.append([icon_name, top_left[0], top_left[1], bottom_right[0], bottom_right[1]])
+
             # Evaluate the predicted icons
             annotations = pd.read_csv(f'./Task2Dataset/annotations/test_image_{image_index + 1}.csv')
-            (true_positives, false_positives, false_negatives) = evaluate_predictions(annotations, predicted_icons)
+            (true_positives, false_positives, false_negatives) = evaluate_predictions(annotations, predictions)
 
-            overall_TPs += true_positives
-            overall_FPs += false_positives
-            overall_FNs += false_negatives
+            # overall_TPs += true_positives
+            # overall_FPs += false_positives
+            # overall_FNs += false_negatives
 
             # Show all the detected icons in the current image
             plt.imshow(display_image, cmap='gray')
