@@ -411,15 +411,15 @@ def evaluate_predictions(annotations, predicted_icons):
 
     return (true_positives, false_positives, false_negatives)
 
-def searchImage(img, test_icons, test_coords, threshold):
+def searchImage(img, test_icons, test_coords, threshold, pyr_depth):
     predicted_icons = []
     index = 0
 
     for icon_name, icon in test_icons:
         best_match = (0, 0, -1)
-        templates = build_gaussian_pyramid(icon, 6)
+        templates = build_gaussian_pyramid(icon, pyr_depth)
         r_icon = cv2.resize(icon, (int(icon.shape[0] * 0.75), int(icon.shape[1] * 0.75)))
-        r_templates = build_gaussian_pyramid(r_icon, 6)
+        r_templates = build_gaussian_pyramid(r_icon, pyr_depth)
         ori_templates = copy.deepcopy(templates)
         templates = []
         for i in range(0, len(ori_templates)):
@@ -524,6 +524,7 @@ def testTask2(iconDir, testDir):
         img_pyr = build_gaussian_pyramid(image, 3)
 
         threshold = 0.85
+        pyr_depth = 6
         # Start at smallest resolution
         for layer in range(len(img_pyr) - 1, -1, -1):
 
@@ -532,7 +533,7 @@ def testTask2(iconDir, testDir):
             display_image = img.copy()
             
             # Predict which icons are in the image
-            predicted_icons = searchImage(norm_img, test_icons, test_coords, threshold)
+            predicted_icons = searchImage(norm_img, test_icons, test_coords, threshold, pyr_depth)
             test_icons = []
             test_coords = []
             predictions = []
@@ -573,21 +574,23 @@ def testTask2(iconDir, testDir):
 
                 predictions.append([icon_name, top_left[0], top_left[1], bottom_right[0], bottom_right[1]])
 
-            # Evaluate the predicted icons
-            annotations = pd.read_csv(f'./Task2Dataset/annotations/test_image_{image_index + 1}.csv')
-            (true_positives, false_positives, false_negatives) = evaluate_predictions(annotations, predictions)
+            if layer == 0:
+                # Evaluate the predicted icons
+                annotations = pd.read_csv(f'./Task2Dataset/annotations/test_image_{image_index + 1}.csv')
+                (true_positives, false_positives, false_negatives) = evaluate_predictions(annotations, predictions)
 
-            # overall_TPs += true_positives
-            # overall_FPs += false_positives
-            # overall_FNs += false_negatives
+                overall_TPs += true_positives
+                overall_FPs += false_positives
+                overall_FNs += false_negatives
 
-            # Show all the detected icons in the current image
-            plt.imshow(display_image, cmap='gray')
-            plt.title(f'Image {image_index + 1}')
-            plt.xticks([]), plt.yticks([])
-            plt.show()
+                # Show all the detected icons in the current image
+                plt.imshow(display_image, cmap='gray')
+                plt.title(f'Image {image_index + 1}')
+                plt.xticks([]), plt.yticks([])
+                plt.show()
 
             threshold += 0.03
+            pyr_depth -= 1
 
     # Evaluate the performance over all images
     print(f"Overall TPs: {overall_TPs}, Overall FPs: {overall_FPs}, Overall FNs: {overall_FNs}")
