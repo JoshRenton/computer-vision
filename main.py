@@ -4,6 +4,7 @@ import cv2
 import pandas as pd
 from matplotlib import pyplot as plt
 import os
+import copy
 
 def HoughLines(edges, rho_res, theta_res, threshold):
     """
@@ -410,14 +411,21 @@ def evaluate_predictions(annotations, predicted_icons):
 
     return (true_positives, false_positives, false_negatives)
 
-def searchImage(img, test_icons, test_coords):
+def searchImage(img, test_icons, test_coords, threshold):
     predicted_icons = []
     index = 0
 
     for icon_name, icon in test_icons:
         best_match = (0, 0, -1)
         templates = build_gaussian_pyramid(icon, 6)
-        
+        r_icon = cv2.resize(icon, (int(icon.shape[0] * 0.75), int(icon.shape[1] * 0.75)))
+        r_templates = build_gaussian_pyramid(r_icon, 6)
+        ori_templates = copy.deepcopy(templates)
+        templates = []
+        for i in range(0, len(ori_templates)):
+            templates.append(ori_templates[i])
+            templates.append(r_templates[i])
+            
         # Multi-scale template matching, keeping only the best match
         # Only do full search of all templates on smallest image size
         if test_coords == None:
@@ -446,12 +454,15 @@ def searchImage(img, test_icons, test_coords):
 
         # Thresholding to prevent false positives
         # Increased threshold after lowest resolution search
-        if test_coords == None:
-            if (best_match[0] < 0.85):
-                continue
-        else:
-            if (best_match[0] < 0.95):
-                continue
+        # if test_coords == None:
+        #     if (best_match[0] < 0.85):
+        #         continue
+        # else:
+        #     if (best_match[0] < 0.95):
+        #         continue
+            
+        if (best_match[0] < threshold):
+            continue
 
         best_template = templates[best_match[2]]
         match_size = best_template.shape[::-1]
@@ -511,6 +522,8 @@ def testTask2(iconDir, testDir):
 
         # Create gaussian pyramid of test_image
         img_pyr = build_gaussian_pyramid(image, 3)
+
+        threshold = 0.85
         # Start at smallest resolution
         for layer in range(len(img_pyr) - 1, -1, -1):
 
@@ -519,7 +532,7 @@ def testTask2(iconDir, testDir):
             display_image = img.copy()
             
             # Predict which icons are in the image
-            predicted_icons = searchImage(norm_img, test_icons, test_coords)
+            predicted_icons = searchImage(norm_img, test_icons, test_coords, threshold)
             test_icons = []
             test_coords = []
             predictions = []
@@ -573,6 +586,8 @@ def testTask2(iconDir, testDir):
             plt.title(f'Image {image_index + 1}')
             plt.xticks([]), plt.yticks([])
             plt.show()
+
+            threshold += 0.03
 
     # Evaluate the performance over all images
     print(f"Overall TPs: {overall_TPs}, Overall FPs: {overall_FPs}, Overall FNs: {overall_FNs}")
