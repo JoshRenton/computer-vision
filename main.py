@@ -42,6 +42,8 @@ def HoughLines(edges, rho_res, theta_res, threshold):
     # Get the indices of all edges in the edge array
     # The index is the coordinate of the edge since the edge array is the same size as the image
     edge_coords = np.asarray(edges == 255).nonzero()
+    threshold = len(edge_coords[0]) * 0.15
+    print(threshold)
 
     # Precalculate sin and cos values for each theta value
     theta_sins = np.sin(theta_values)
@@ -98,7 +100,8 @@ def HoughLines(edges, rho_res, theta_res, threshold):
     extremes = []
     for r_index, t in zip(final_rho_index, final_theta_index):
         extremes.append((lows[(t, r_index)], highs[(t, r_index)]))
-    return filtered_polar_coordinates, extremes
+    return (filtered_polar_coordinates, extremes)
+    # return polar_coordinates, extremes
 
 def round_angle(angle):
     if angle < 0:
@@ -325,15 +328,19 @@ def testTask1(folder_name):
             # cv2.line(cdst, pt1, pt2, (0, 0, 255), 1,  cv2.LINE_AA)
 
         extremes = [ex for _, ex in sorted(zip(angles_deg, extremes))]
+        print(extremes)
         angles_deg = sorted(angles_deg)
 
-        cv2.line(cdst, extremes[0][0], extremes[0][1], (0, 0, 255), 1,  cv2.LINE_AA)
-        cv2.line(cdst, extremes[len(extremes) - 1][0], extremes[len(extremes) - 1][1], (0, 0, 255), 1,  cv2.LINE_AA)
+        # cv2.line(cdst, extremes[0][0], extremes[0][1], (0, 0, 255), 1,  cv2.LINE_AA)
+        # cv2.line(cdst, extremes[len(extremes) - 1][0], extremes[len(extremes) - 1][1], (0, 0, 255), 1,  cv2.LINE_AA)
 
         line1 = extremes[0]
         line2 = extremes[len(extremes) - 1]
 
+        print(line1, line2)
+
         line1, line2 = align_lines(line1, line2)
+        print(line1, line2)
 
         x_diff1 = line1[1][0] - line1[0][0]
         x_diff2 = line2[1][0] - line2[0][0]
@@ -355,7 +362,8 @@ def testTask1(folder_name):
             angles_deg[len(angles_deg) - 1] = 180
         elif (abs(x_diff2) < 1.5 and y_diff2 < 0):
             angles_deg[len(angles_deg) - 1] = 0
-        
+
+        print(angles_deg[0], angles_deg[len(angles_deg) - 1])
 
         # Calculate angle between two lines
         if len(angles_deg) >= 2:
@@ -368,9 +376,9 @@ def testTask1(folder_name):
         else:
             print(row['FileName'])
 
-        cv2.imshow('Detected Lines', cdst)
-        cv2.waitKey(0)
-        cv2.destroyAllWindows()
+        # cv2.imshow('Detected Lines', cdst)
+        # cv2.waitKey(0)
+        # cv2.destroyAllWindows()
             
     # Calculate errors
     errors = np.abs(np.subtract(actual_angles, predicted_angles))
