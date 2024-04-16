@@ -5,6 +5,7 @@ import pandas as pd
 from matplotlib import pyplot as plt
 import os
 import copy
+import operator
 
 def HoughLines(edges, rho_res, theta_res, threshold):
     """
@@ -35,6 +36,8 @@ def HoughLines(edges, rho_res, theta_res, threshold):
 
     # Create an accumulator array to store the votes (in parameter space)
     accumulator = np.zeros([len(theta_values), len(rho_values)])
+    lows = {}
+    highs = {}
 
     # Get the indices of all edges in the edge array
     # The index is the coordinate of the edge since the edge array is the same size as the image
@@ -45,7 +48,7 @@ def HoughLines(edges, rho_res, theta_res, threshold):
     theta_coss = np.cos(theta_values)
 
     # For each edge, calculate rho for each value of theta
-    for x,y in zip(edge_coords[0], edge_coords[1]):
+    for y,x in zip(edge_coords[0], edge_coords[1]):
         for t in range(len(theta_values)):
             rho = x * theta_coss[t] + y * theta_sins[t]
 
@@ -53,6 +56,23 @@ def HoughLines(edges, rho_res, theta_res, threshold):
             r_index = np.searchsorted(rho_values, rho, side='left') - 1
             # Increment the vote for this cell
             accumulator[t, r_index] += 1
+
+            # Keep track of extremes that vote for each line
+            if (t, r_index) in lows:
+                if x < lows.get((t, r_index))[0]:
+                    lows[(t, r_index)] = (x, y)
+                elif x == lows.get((t, r_index))[0] and y < lows.get((t, r_index))[1]:
+                    lows[(t, r_index)] = (x, y)
+            else:
+                lows[(t, r_index)] = (x, y)
+
+            if (t, r_index) in highs:
+                if x > highs.get((t, r_index))[0]:
+                    highs[(t, r_index)] = (x, y)
+                elif x == highs.get((t, r_index))[0] and y > highs.get((t, r_index))[1]:
+                    highs[(t, r_index)] = (x, y)
+            else:
+                highs[(t, r_index)] = (x, y)
 
     # TODO: Look at hough_peaks to see if this function can return just one line
 
@@ -62,7 +82,23 @@ def HoughLines(edges, rho_res, theta_res, threshold):
     final_theta = theta_values[final_theta_index]
     
     polar_coordinates = np.vstack([final_rho, final_theta]).T
-    return polar_coordinates
+
+    counts = {}
+    for i in range(0, len(polar_coordinates)):
+        if polar_coordinates[i][1] in counts:
+            counts[polar_coordinates[i][1]] += 1
+        else:
+            counts[polar_coordinates[i][1]] = 1
+
+    # Filter out all but the 2 most frequently occuring thetas
+    counts = sorted(counts.items(), key=lambda item: item[1], reverse=True)
+    highest_count_thetas = [theta for theta, _ in counts[:2]]
+    filtered_polar_coordinates = [tuple(pc) for pc in polar_coordinates if pc[1] in highest_count_thetas]
+
+    extremes = []
+    for r_index, t in zip(final_rho_index, final_theta_index):
+        extremes.append((lows[(t, r_index)], highs[(t, r_index)]))
+    return filtered_polar_coordinates, extremes
 
 def round_angle(angle):
     if angle < 0:
@@ -187,6 +223,44 @@ def testCanny(folder_name):
     image =  cv2.imread(folder_name + '/' + 'image9.png', cv2.IMREAD_GRAYSCALE)
     canny(image, 50, 200)
 
+# Return intersection between lines defined by a pair of points
+def intersection(pts1, pts2):
+    pt1, pt2 = pts1
+    pt3, pt4 = pts2
+    
+    x1, y1 = pt1
+    x2, y2 = pt2
+    x3, y3 = pt3
+    x4, y4 = pt4
+
+    denominator = (x1 - x2) * (y3 - y4) - (y1 - y2) * (x3 - x4)
+
+    if denominator == 0:
+        return (-1, -1)
+
+    Px = ((x1 * y2 - y1 * x2) * (x3 - x4) - (x1 - x2) * (x3 * y4 - y3 * x4)) / denominator
+    Py = ((x1 * y2 - y1 * x2) * (y3 - y4) - (y1 - y2) * (x3 * y4 - y3 * x4)) / denominator
+
+    return (Px, Py)
+
+# Return absolute distance between 2 tuple points
+def dist(t1, t2):
+    result = abs(sum(tuple(map(lambda i, j: i - j, t1, t2))))
+    return result
+
+# Figure out the extremes where the lines connect
+def align_lines(line1, line2):
+    isct = intersection(line1, line2)
+
+    # Find the two closest points (where the lines connect)
+    diff1 = [dist(line1[i], isct) for i in range(0, len(line1))]
+    diff2 = [dist(line2[i], isct) for i in range(0, len(line2))]
+
+    aligned_line1 = [x for _, x in sorted(zip(diff1, line1))]
+    aligned_line2 = [x for _, x in sorted(zip(diff2, line2))]
+
+    return aligned_line1, aligned_line2
+
 def testTask1(folder_name):
     # Read in data
     task1_data = pd.read_csv(folder_name+"/list.txt")
@@ -198,12 +272,14 @@ def testTask1(folder_name):
     # Iterate through all images
     for index, row in task1_data.iterrows():
         image =  cv2.imread(folder_name + '/' + row['FileName'], cv2.IMREAD_GRAYSCALE)
+        # image = cv2.rotate(image, cv2.ROTATE_180)
+        # cv2.imshow('im', image)
         actual_angles.append(row['AngleInDegrees'])
         edges = canny(image, 50, 200)
 
         # lines = cv2.HoughLines(edges, 1, np.pi / 180, 90, None, 0, 0)
         # 1 degree = pi / 180
-        lines = HoughLines(edges, 1, math.radians(1), 90)
+        lines, extremes = HoughLines(edges, 1, math.radians(1), 90)
 
         if lines is None:
             print(row['FileName'])
@@ -211,6 +287,7 @@ def testTask1(folder_name):
 
         cdst =  cv2.cvtColor(edges,  cv2.COLOR_GRAY2BGR)
         angles_deg = []
+        pts = []
 
         # Able to work directly with the normal line because
         # theta is the same as the angle between the line and the y-axis
@@ -223,6 +300,7 @@ def testTask1(folder_name):
 
             # rho, theta = line[0]
             rho, theta = line
+            rho = abs(rho)
 
             # When rho is negative, we need to flip the angle along the x-axis
             if rho < 0:
@@ -243,9 +321,41 @@ def testTask1(folder_name):
             y0 = b * rho
             pt1 = (int(x0 + 1000*(-b)), int(y0 + 1000*(a)))
             pt2 = (int(x0 - 1000*(-b)), int(y0 - 1000*(a)))
-            cv2.line(cdst, pt1, pt2, (0, 0, 255), 1,  cv2.LINE_AA)
+            # pts.append((pt1, pt2))
+            # cv2.line(cdst, pt1, pt2, (0, 0, 255), 1,  cv2.LINE_AA)
 
+        extremes = [ex for _, ex in sorted(zip(angles_deg, extremes))]
         angles_deg = sorted(angles_deg)
+
+        cv2.line(cdst, extremes[0][0], extremes[0][1], (0, 0, 255), 1,  cv2.LINE_AA)
+        cv2.line(cdst, extremes[len(extremes) - 1][0], extremes[len(extremes) - 1][1], (0, 0, 255), 1,  cv2.LINE_AA)
+
+        line1 = extremes[0]
+        line2 = extremes[len(extremes) - 1]
+
+        line1, line2 = align_lines(line1, line2)
+
+        x_diff1 = line1[1][0] - line1[0][0]
+        x_diff2 = line2[1][0] - line2[0][0]
+        y_diff1 = line1[1][1] - line1[0][1]
+        y_diff2 = line2[1][1] - line2[0][1]
+
+        # Line segment is facing left from connection point
+        if (x_diff1 < 0):
+            angles_deg[0] += 180
+        if (x_diff2 < 0):
+            angles_deg[len(angles_deg) - 1] += 180
+
+        # Check for direction of vertical line from connection point
+        if (abs(x_diff1) < 1.5 and y_diff1 > 0):
+            angles_deg[0] = 180
+        elif (abs(x_diff1) < 1.5 and y_diff1 < 0):
+            angles_deg[0] = 0
+        if (abs(x_diff2) < 1.5 and y_diff2 > 0):
+            angles_deg[len(angles_deg) - 1] = 180
+        elif (abs(x_diff2) < 1.5 and y_diff2 < 0):
+            angles_deg[len(angles_deg) - 1] = 0
+        
 
         # Calculate angle between two lines
         if len(angles_deg) >= 2:
@@ -258,9 +368,9 @@ def testTask1(folder_name):
         else:
             print(row['FileName'])
 
-        # cv2.imshow('Detected Lines', cdst)
-        # cv2.waitKey(0)
-        # cv2.destroyAllWindows()
+        cv2.imshow('Detected Lines', cdst)
+        cv2.waitKey(0)
+        cv2.destroyAllWindows()
             
     # Calculate errors
     errors = np.abs(np.subtract(actual_angles, predicted_angles))
@@ -417,6 +527,7 @@ def searchImage(img, test_icons, test_coords, threshold, pyr_depth):
 
     for icon_name, icon in test_icons:
         best_match = (0, 0, -1)
+        # Currently creating pyramid every time
         templates = build_gaussian_pyramid(icon, pyr_depth)
         r_icon = cv2.resize(icon, (int(icon.shape[0] * 0.75), int(icon.shape[1] * 0.75)))
         r_templates = build_gaussian_pyramid(r_icon, pyr_depth)
@@ -637,6 +748,6 @@ def testTask3(iconFolderName, testFolderName):
 #         # The Task3 dataset has two directories, an annotation directory that contains the annotation and a png directory with list of images 
 #         testTask3(args.IconDataset,args.Task3Dataset)
 
-# testTask1('Task1Dataset')
+testTask1('Task1Dataset')
 # testCanny('Task1Dataset')
-testTask2('ah', 'ah')
+# testTask2('ah', 'ah')
