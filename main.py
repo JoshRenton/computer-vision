@@ -166,8 +166,8 @@ def canny(image, t_low, t_high):
     # Blur the image and then apply Sobel in the x & y directions???
 
     # Apply Scharr filters to image
-    gx = cv2.Scharr(image, cv2.CV_16S, 1, 0)
-    gy = cv2.Scharr(image, cv2.CV_16S, 0, 1)
+    gx = cv2.Sobel(image, cv2.CV_16S, 1, 0, ksize=3)
+    gy = cv2.Sobel(image, cv2.CV_16S, 0, 1, ksize=3)
 
     # Calculate gradient magnitude and direction
     g = np.hypot(gx, gy)
