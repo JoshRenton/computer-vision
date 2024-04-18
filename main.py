@@ -6,6 +6,8 @@ from matplotlib import pyplot as plt
 import os
 import copy
 import operator
+import random
+import argparse
 
 def HoughLines(edges, rho_res, theta_res, threshold):
     """
@@ -43,7 +45,6 @@ def HoughLines(edges, rho_res, theta_res, threshold):
     # The index is the coordinate of the edge since the edge array is the same size as the image
     edge_coords = np.asarray(edges == 255).nonzero()
     threshold = len(edge_coords[0]) * 0.15
-    print(threshold)
 
     # Precalculate sin and cos values for each theta value
     theta_sins = np.sin(theta_values)
@@ -59,10 +60,11 @@ def HoughLines(edges, rho_res, theta_res, threshold):
             # Increment the vote for this cell
             accumulator[t, r_index] += 1
 
-            # Keep track of extremes that vote for each line
+            # Keep track of highest and lowest x-coordinates of points that vote for each line
             if (t, r_index) in lows:
                 if x < lows.get((t, r_index))[0]:
                     lows[(t, r_index)] = (x, y)
+                # Defer to y-coordinate if x is equal for vertical lines
                 elif x == lows.get((t, r_index))[0] and y < lows.get((t, r_index))[1]:
                     lows[(t, r_index)] = (x, y)
             else:
@@ -78,31 +80,37 @@ def HoughLines(edges, rho_res, theta_res, threshold):
 
     # TODO: Look at hough_peaks to see if this function can return just one line
 
-    # TODO: Need to rewrite these lines, copy pasta
-    final_theta_index, final_rho_index = np.where(accumulator > threshold)
-    final_rho = rho_values[final_rho_index]    
-    final_theta = theta_values[final_theta_index]
-    
-    polar_coordinates = np.vstack([final_rho, final_theta]).T
+    test = {}
+    theta_indices, rho_indices = np.where(accumulator > threshold)
+    for theta_index, rho_index in zip(theta_indices, rho_indices):
+        test[(theta_index, rho_index)] = accumulator[theta_index, rho_index]
 
-    counts = {}
-    for i in range(0, len(polar_coordinates)):
-        if polar_coordinates[i][1] in counts:
-            counts[polar_coordinates[i][1]] += 1
-        else:
-            counts[polar_coordinates[i][1]] = 1
+    # sort dict on the values
+    test = dict(sorted(test.items(), key=lambda item: item[1], reverse=True))
 
-    # Filter out all but the 2 most frequently occuring thetas
-    counts = sorted(counts.items(), key=lambda item: item[1], reverse=True)
-    highest_count_thetas = [theta for theta, _ in counts[:2]]
-    filtered_polar_coordinates = [tuple(pc) for pc in polar_coordinates if pc[1] in highest_count_thetas]
+    # loop over the dict and get the top 2 values
+    polar_coordinates = []
+    final_indices = []
+    for theta_index, rho_index in test.keys():
+        theta = theta_values[theta_index]
+        rho = rho_values[rho_index]
+
+        if len(polar_coordinates) == 0:
+            polar_coordinates.append([rho, theta])
+            final_indices.append((rho_index, theta_index))
+        elif abs(polar_coordinates[0][1] - theta) > math.radians(1):
+            polar_coordinates.append([rho, theta])
+            final_indices.append((rho_index, theta_index))
+            break
+
+    polar_coordinates = np.array(polar_coordinates)
 
     extremes = []
-    for r_index, t in zip(final_rho_index, final_theta_index):
+    for r_index, t in final_indices:
         extremes.append((lows[(t, r_index)], highs[(t, r_index)]))
-    return (filtered_polar_coordinates, extremes)
-    # return polar_coordinates, extremes
+    return (polar_coordinates, extremes)
 
+# Round angle to nearest 45 degrees
 def round_angle(angle):
     if angle < 0:
         angle += 180
@@ -114,7 +122,8 @@ def round_angle(angle):
         return 90
     else:
         return 135
-    
+
+# Check whether a pixel shold be suppressed
 def pixel_suppressed(g, r_angle, row, column):
     r_row, r_col, p_row, p_col = 0, 0, 0, 0
     intensity = g[row][column]
@@ -152,6 +161,7 @@ def pixel_suppressed(g, r_angle, row, column):
 
     return not ((intensity >= r) and (intensity >= p))
 
+# Canny edge detection implementation
 def canny(image, t_low, t_high):
     # Blur the image and then apply Sobel in the x & y directions???
 
@@ -216,16 +226,6 @@ def canny(image, t_low, t_high):
 
     return mask
 
-    # cv2.imshow("suppressed", suppress)
-    # cv2.imshow("a", a)
-    # cv2.imshow("output", output)
-    # cv2.waitKey(0)
-    # cv2.destroyAllWindows()
-
-def testCanny(folder_name):
-    image =  cv2.imread(folder_name + '/' + 'image9.png', cv2.IMREAD_GRAYSCALE)
-    canny(image, 50, 200)
-
 # Return intersection between lines defined by a pair of points
 def intersection(pts1, pts2):
     pt1, pt2 = pts1
@@ -248,8 +248,9 @@ def intersection(pts1, pts2):
 
 # Return absolute distance between 2 tuple points
 def dist(t1, t2):
-    result = abs(sum(tuple(map(lambda i, j: i - j, t1, t2))))
-    return result
+    x_diff = abs(t1[0] - t2[0])
+    y_diff = abs(t1[1] - t2[1])
+    return x_diff + y_diff
 
 # Figure out the extremes where the lines connect
 def align_lines(line1, line2):
@@ -259,6 +260,7 @@ def align_lines(line1, line2):
     diff1 = [dist(line1[i], isct) for i in range(0, len(line1))]
     diff2 = [dist(line2[i], isct) for i in range(0, len(line2))]
 
+    # Make the first point of each line be the connecting point
     aligned_line1 = [x for _, x in sorted(zip(diff1, line1))]
     aligned_line2 = [x for _, x in sorted(zip(diff2, line2))]
 
@@ -275,12 +277,10 @@ def testTask1(folder_name):
     # Iterate through all images
     for index, row in task1_data.iterrows():
         image =  cv2.imread(folder_name + '/' + row['FileName'], cv2.IMREAD_GRAYSCALE)
-        # image = cv2.rotate(image, cv2.ROTATE_180)
-        # cv2.imshow('im', image)
+        image = cv2.rotate(image, cv2.ROTATE_90_COUNTERCLOCKWISE)
         actual_angles.append(row['AngleInDegrees'])
         edges = canny(image, 50, 200)
 
-        # lines = cv2.HoughLines(edges, 1, np.pi / 180, 90, None, 0, 0)
         # 1 degree = pi / 180
         lines, extremes = HoughLines(edges, 1, math.radians(1), 90)
 
@@ -318,29 +318,21 @@ def testTask1(folder_name):
 
             angles_deg.append(angle)
 
-            a = math.cos(theta)
-            b = math.sin(theta)
-            x0 = a * rho
-            y0 = b * rho
-            pt1 = (int(x0 + 1000*(-b)), int(y0 + 1000*(a)))
-            pt2 = (int(x0 - 1000*(-b)), int(y0 - 1000*(a)))
-            # pts.append((pt1, pt2))
-            # cv2.line(cdst, pt1, pt2, (0, 0, 255), 1,  cv2.LINE_AA)
-
         extremes = [ex for _, ex in sorted(zip(angles_deg, extremes))]
-        print(extremes)
         angles_deg = sorted(angles_deg)
 
-        # cv2.line(cdst, extremes[0][0], extremes[0][1], (0, 0, 255), 1,  cv2.LINE_AA)
-        # cv2.line(cdst, extremes[len(extremes) - 1][0], extremes[len(extremes) - 1][1], (0, 0, 255), 1,  cv2.LINE_AA)
+        detected_lines = np.zeros_like(image)
+        detected_lines = cv2.cvtColor(detected_lines, cv2.COLOR_GRAY2BGR)
+
+        # cv2.line(detected_lines, extremes[0][0], extremes[0][1], (0, 0, 255), 1,  cv2.LINE_AA)
+        # cv2.line(detected_lines, extremes[len(extremes) - 1][0], extremes[len(extremes) - 1][1], (0, 0, 255), 1,  cv2.LINE_AA)
+        cv2.line(cdst, extremes[0][0], extremes[0][1], (0, 0, 255), 1,  cv2.LINE_AA)
+        cv2.line(cdst, extremes[len(extremes) - 1][0], extremes[len(extremes) - 1][1], (0, 0, 255), 1,  cv2.LINE_AA)
 
         line1 = extremes[0]
         line2 = extremes[len(extremes) - 1]
 
-        print(line1, line2)
-
         line1, line2 = align_lines(line1, line2)
-        print(line1, line2)
 
         x_diff1 = line1[1][0] - line1[0][0]
         x_diff2 = line2[1][0] - line2[0][0]
@@ -363,8 +355,6 @@ def testTask1(folder_name):
         elif (abs(x_diff2) < 1.5 and y_diff2 < 0):
             angles_deg[len(angles_deg) - 1] = 0
 
-        print(angles_deg[0], angles_deg[len(angles_deg) - 1])
-
         # Calculate angle between two lines
         if len(angles_deg) >= 2:
             angle_between_lines = abs(angles_deg[0] - angles_deg[len(angles_deg) - 1])
@@ -372,9 +362,11 @@ def testTask1(folder_name):
             # Want the acute angle
             if (angle_between_lines > 180):
                 angle_between_lines = 360 - angle_between_lines
-            predicted_angles.append(angle_between_lines)
+            predicted_angles.append(np.round(angle_between_lines))
         else:
             print(row['FileName'])
+
+        # cv2.imwrite('temp/' + row['FileName'], detected_lines)
 
         # cv2.imshow('Detected Lines', cdst)
         # cv2.waitKey(0)
@@ -735,27 +727,27 @@ def testTask3(iconFolderName, testFolderName):
     return (Acc,TPR,FPR,FNR)
 
 
-# if __name__ == "__main__":
+if __name__ == "__main__":
 
-#     # parsing the command line path to directories and invoking the test scripts for each task
-#     parser = argparse.ArgumentParser("Data Parser")
-#     parser.add_argument("--Task1Dataset", help="Provide a folder that contains the Task 1 Dataset.", type=str, required=False)
-#     parser.add_argument("--IconDataset", help="Provide a folder that contains the Icon Dataset for Task2 and Task3.", type=str, required=False)
-#     parser.add_argument("--Task2Dataset", help="Provide a folder that contains the Task 2 test Dataset.", type=str, required=False)
-#     parser.add_argument("--Task3Dataset", help="Provide a folder that contains the Task 3 test Dataset.", type=str, required=False)
-#     args = parser.parse_args()
-#     if(args.Task1Dataset!=None):
-#         # This dataset has a list of png files and a txt file that has annotations of filenames and angle
-#         testTask1(args.Task1Dataset)
-#     if(args.IconDataset!=None and args.Task2Dataset!=None):
-#         # The Icon dataset has a directory that contains the icon image for each file
-#         # The Task2 dataset directory has two directories, an annotation directory that contains the annotation and a png directory with list of images 
-#         testTask2(args.IconDataset,args.Task2Dataset)
-#     if(args.IconDataset!=None and args.Task3Dataset!=None):
-#         # The Icon dataset directory contains an icon image for each file
-#         # The Task3 dataset has two directories, an annotation directory that contains the annotation and a png directory with list of images 
-#         testTask3(args.IconDataset,args.Task3Dataset)
+    # parsing the command line path to directories and invoking the test scripts for each task
+    parser = argparse.ArgumentParser("Data Parser")
+    parser.add_argument("--Task1Dataset", help="Provide a folder that contains the Task 1 Dataset.", type=str, required=False)
+    parser.add_argument("--IconDataset", help="Provide a folder that contains the Icon Dataset for Task2 and Task3.", type=str, required=False)
+    parser.add_argument("--Task2Dataset", help="Provide a folder that contains the Task 2 test Dataset.", type=str, required=False)
+    parser.add_argument("--Task3Dataset", help="Provide a folder that contains the Task 3 test Dataset.", type=str, required=False)
+    args = parser.parse_args()
+    if(args.Task1Dataset!=None):
+        # This dataset has a list of png files and a txt file that has annotations of filenames and angle
+        testTask1(args.Task1Dataset)
+    if(args.IconDataset!=None and args.Task2Dataset!=None):
+        # The Icon dataset has a directory that contains the icon image for each file
+        # The Task2 dataset directory has two directories, an annotation directory that contains the annotation and a png directory with list of images 
+        testTask2(args.IconDataset,args.Task2Dataset)
+    if(args.IconDataset!=None and args.Task3Dataset!=None):
+        # The Icon dataset directory contains an icon image for each file
+        # The Task3 dataset has two directories, an annotation directory that contains the annotation and a png directory with list of images 
+        testTask3(args.IconDataset,args.Task3Dataset)
 
-testTask1('Task1Dataset')
+# testTask1('Task1Dataset')
 # testCanny('Task1Dataset')
 # testTask2('ah', 'ah')
