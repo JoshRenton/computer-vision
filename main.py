@@ -383,6 +383,10 @@ def testTask1(folder_name):
 
     return(total_error)
 
+
+# -----------------------
+#         TASK 2
+# -----------------------
 def build_gaussian_pyramid(image, downsamples):
     G = image.copy()
     pyramid = [G]
@@ -580,15 +584,8 @@ def searchImage(img, test_icons, test_coords, threshold, pyr_depth):
 
 
 def testTask2(iconDir, testDir):
-    # assume that test folder name has a directory annotations with a list of csv files
-    # load train images from iconDir and for each image from testDir, match it with each class from the iconDir to find the best match
-    # For each predicted class, check accuracy with the annotations
-    # Check and calculate the Intersection Over Union (IoU) score
-    # based on the IoU determine acceracy, TruePositives, FalsePositives, FalseNegatives
-    # return (Acc,TPR,FPR,FNR)
-
-    # Retrieve all the icons
-    icon_folder = './IconDataset/png'
+    # Retrieve all the icons (train images)
+    icon_folder = f'./{iconDir}/png'
     icons = []
     icon_names = []
     for filename in os.listdir(icon_folder):
@@ -596,19 +593,17 @@ def testTask2(iconDir, testDir):
         icon_names.append(filename[1:].rsplit(".", 1)[0])
 
         icon_path = os.path.join(icon_folder, filename)
-        # TODO: Color???
         icon = cv2.imread(icon_path, cv2.IMREAD_GRAYSCALE)
         blurred_icon = cv2.GaussianBlur(icon, ksize=(5,5), sigmaX=0)
         icons.append(blurred_icon)
 
-    image_folder = './Task2Dataset/images'
+    image_folder = f'./{testDir}/images'
     images = []
     image_names = os.listdir(image_folder)
     # Sorts on the number at the end of the filename
     sorted_image_names = sorted(image_names, key=lambda x: int(x.split('_')[2].split('.')[0]))
     for filename in sorted_image_names:
         image_path = os.path.join(image_folder, filename)
-        # TODO: Color???
         image = cv2.imread(image_path, cv2.IMREAD_GRAYSCALE)
         blurred_image = cv2.GaussianBlur(image, ksize=(5,5), sigmaX=0)
         images.append(blurred_image)
@@ -683,7 +678,7 @@ def testTask2(iconDir, testDir):
 
             if layer == 0:
                 # Evaluate the predicted icons
-                annotations = pd.read_csv(f'./Task2Dataset/annotations/test_image_{image_index + 1}.csv')
+                annotations = pd.read_csv(f'./{testDir}/annotations/test_image_{image_index + 1}.csv')
                 (true_positives, false_positives, false_negatives) = evaluate_predictions(annotations, predictions)
 
                 overall_TPs += true_positives
@@ -714,6 +709,10 @@ def testTask2(iconDir, testDir):
     # Return the results
     print(f"Accuracy: {accuracy}, Precision: {precision}, Recall: {recall}, True Positive Rate: {true_positive_rate}")
 
+    # TODO:
+    # based on the IoU determine acceracy, TruePositives, FalsePositives, FalseNegatives
+    # return (Acc,TPR,FPR,FNR)
+
 def testTask3(iconFolderName, testFolderName):
     # assume that test folder name has a directory annotations with a list of csv files
     # load train images from iconDir and for each image from testDir, match it with each class from the iconDir to find the best match
@@ -724,7 +723,6 @@ def testTask3(iconFolderName, testFolderName):
 
 
 if __name__ == "__main__":
-
     # parsing the command line path to directories and invoking the test scripts for each task
     parser = argparse.ArgumentParser("Data Parser")
     parser.add_argument("--Task1Dataset", help="Provide a folder that contains the Task 1 Dataset.", type=str, required=False)
@@ -745,5 +743,4 @@ if __name__ == "__main__":
         testTask3(args.IconDataset,args.Task3Dataset)
 
 # testTask1('Task1Dataset')
-# testCanny('Task1Dataset')
-# testTask2('ah', 'ah')
+# testTask2('IconDataset', 'Task2Datset')
