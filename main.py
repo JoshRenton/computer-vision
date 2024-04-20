@@ -5,8 +5,6 @@ import pandas as pd
 from matplotlib import pyplot as plt
 import os
 import copy
-import operator
-import random
 import argparse
 
 def HoughLines(edges, rho_res, theta_res, threshold):
@@ -52,46 +50,44 @@ def HoughLines(edges, rho_res, theta_res, threshold):
 
     # For each edge, calculate rho for each value of theta
     for y,x in zip(edge_coords[0], edge_coords[1]):
-        for t in range(len(theta_values)):
-            rho = x * theta_coss[t] + y * theta_sins[t]
+        for t_index in range(len(theta_values)):
+            rho = x * theta_coss[t_index] + y * theta_sins[t_index]
 
             # Get the index of the closest rho value below the actual calculated rho
             r_index = np.searchsorted(rho_values, rho, side='left') - 1
             # Increment the vote for this cell
-            accumulator[t, r_index] += 1
+            accumulator[t_index, r_index] += 1
 
             # Keep track of highest and lowest x-coordinates of points that vote for each line
-            if (t, r_index) in lows:
-                if x < lows.get((t, r_index))[0]:
-                    lows[(t, r_index)] = (x, y)
+            if (t_index, r_index) in lows:
+                if x < lows.get((t_index, r_index))[0]:
+                    lows[(t_index, r_index)] = (x, y)
                 # Defer to y-coordinate if x is equal for vertical lines
-                elif x == lows.get((t, r_index))[0] and y < lows.get((t, r_index))[1]:
-                    lows[(t, r_index)] = (x, y)
+                elif x == lows.get((t_index, r_index))[0] and y < lows.get((t_index, r_index))[1]:
+                    lows[(t_index, r_index)] = (x, y)
             else:
-                lows[(t, r_index)] = (x, y)
+                lows[(t_index, r_index)] = (x, y)
 
-            if (t, r_index) in highs:
-                if x > highs.get((t, r_index))[0]:
-                    highs[(t, r_index)] = (x, y)
-                elif x == highs.get((t, r_index))[0] and y > highs.get((t, r_index))[1]:
-                    highs[(t, r_index)] = (x, y)
+            if (t_index, r_index) in highs:
+                if x > highs.get((t_index, r_index))[0]:
+                    highs[(t_index, r_index)] = (x, y)
+                elif x == highs.get((t_index, r_index))[0] and y > highs.get((t_index, r_index))[1]:
+                    highs[(t_index, r_index)] = (x, y)
             else:
-                highs[(t, r_index)] = (x, y)
+                highs[(t_index, r_index)] = (x, y)
 
-    # TODO: Look at hough_peaks to see if this function can return just one line
-
-    test = {}
+    index_to_votes = {}
     theta_indices, rho_indices = np.where(accumulator > threshold)
     for theta_index, rho_index in zip(theta_indices, rho_indices):
-        test[(theta_index, rho_index)] = accumulator[theta_index, rho_index]
+        index_to_votes[(theta_index, rho_index)] = accumulator[theta_index, rho_index]
 
-    # sort dict on the values
-    test = dict(sorted(test.items(), key=lambda item: item[1], reverse=True))
+    # sort the dict by the vote count
+    index_to_votes = dict(sorted(index_to_votes.items(), key=lambda item: item[1], reverse=True))
 
-    # loop over the dict and get the top 2 values
+    # Generate polar coordinates from the the top 2 cells in the dict
     polar_coordinates = []
     final_indices = []
-    for theta_index, rho_index in test.keys():
+    for theta_index, rho_index in index_to_votes.keys():
         theta = theta_values[theta_index]
         rho = rho_values[rho_index]
 
@@ -106,8 +102,8 @@ def HoughLines(edges, rho_res, theta_res, threshold):
     polar_coordinates = np.array(polar_coordinates)
 
     extremes = []
-    for r_index, t in final_indices:
-        extremes.append((lows[(t, r_index)], highs[(t, r_index)]))
+    for r_index, t_index in final_indices:
+        extremes.append((lows[(t_index, r_index)], highs[(t_index, r_index)]))
     return (polar_coordinates, extremes)
 
 # Round angle to nearest 45 degrees
@@ -207,12 +203,12 @@ def canny(image, t_low, t_high):
     mask = np.zeros_like(suppress)
 
     # Boolean array, True if the pixel is a weak/strong edge
-    strong_edges = (suppress >= t_high)
-    weak_edges = (suppress >= t_low)
+    strong_edge_pixels = (suppress >= t_high)
+    pixels_above_t_low = (suppress >= t_low)
 
     # Each pixel is labeled with a number corresponding to its connected component
     # uint8 to convert Boolean array to a 0/255 array
-    num_labels, labels = cv2.connectedComponents(np.uint8(weak_edges))
+    num_labels, labels = cv2.connectedComponents(np.uint8(pixels_above_t_low))
 
     # Look at each connected component and determine if it should be a strong edge
     # Starting at 1 because 0 is the background
@@ -220,7 +216,7 @@ def canny(image, t_low, t_high):
         # Boolean array of pixels in the current component
         component = (labels == label)
 
-        componentContainsStrongEdge = np.any(component & strong_edges)
+        componentContainsStrongEdge = np.any(component & strong_edge_pixels)
         if componentContainsStrongEdge:
             mask[component] = 255
 
