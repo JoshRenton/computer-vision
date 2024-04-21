@@ -277,7 +277,7 @@ def testTask1(folder_name):
         actual_angles.append(row['AngleInDegrees'])
         edges = canny(image, 50, 200)
 
-        # 1 degree = pi / 180
+        # 1 degree = pi / 180 radians
         lines, extremes = HoughLines(edges, 1, math.radians(1), 90)
 
         if lines is None:
@@ -390,11 +390,14 @@ def testTask1(folder_name):
 def build_gaussian_pyramid(image, downsamples):
     G = image.copy()
     pyramid = [G]
-    for i in range(downsamples):
-        # TODO: Downsample at a slower rate like 10% - image = cv2.resize(image, None, fx=0.9, fy=0.9, interpolation=cv2.INTER_AREA)
-        # TODO: Start the template at a smaller scale???
-        G = cv2.pyrDown(G)
+    # TODO: Start the template at a smaller scale???
+
+    # TODO: Rename variables
+    for _ in range(downsamples):
+        # half_step = cv2.resize(G, dsize=None, fx=0.75, fy=0.75) # 25% downscale
+        G = cv2.pyrDown(G) # 50% downscale
         pyramid.append(G)
+        # pyramid.append(half_step)
     return pyramid
 
 def build_laplacian_pyramid(gp):
@@ -594,6 +597,21 @@ def testTask2(iconDir, testDir):
             pyramid.append(half_step)
             pyramid.append(G)
         icon_pyramids.append(pyramid)
+
+        # templates = build_gaussian_pyramid(icon, 6)
+        # r_icon = cv2.resize(icon, dsize=None, fx=0.75, fy=0.75)
+        # r_templates = build_gaussian_pyramid(r_icon, 6)
+        # ori_templates = copy.deepcopy(templates)
+        # templates = []
+        # for i in range(0, len(ori_templates)):
+        #     templates.append(ori_templates[i])
+        #     templates.append(r_templates[i])
+        # icon_pyramids.append(templates) # 14 layers per icon
+
+    # Print the shape of all the layers in the first pyramid in icon_pyramids
+    for layer in icon_pyramids[0]:
+        print(layer.shape)
+
     image_folder = f'./{testDir}/images'
     images = []
     image_names = os.listdir(image_folder)
@@ -623,6 +641,7 @@ def testTask2(iconDir, testDir):
 
         threshold = 0.85
         pyr_depth = len(icon_pyramids[0])
+        test_coords = None # FIXME: rename
         icon_indicies = list(range(len(icon_names))) # Redo the loop so this can be defined outside the loop - recursion
 
         # icon index, top, left, bottom, right
@@ -660,6 +679,7 @@ def testTask2(iconDir, testDir):
                 print(top_left, bottom_right)
                 print(best_match)
                 print("")
+                final_predictions.append([icon_index, top_left[0], top_left[1], bottom_right[0], bottom_right[1]])
                 
                 # Bounding box
                 cv2.rectangle(display_image, top_left, bottom_right, 0, 2)
@@ -674,8 +694,6 @@ def testTask2(iconDir, testDir):
                 # plt.title('Detected Point'), plt.xticks([]), plt.yticks([])
                 # plt.suptitle('Template ' + str(best_match[2]))
                 # plt.show()
-
-                predictions.append([icon_name, top_left[0], top_left[1], bottom_right[0], bottom_right[1]])
 
             threshold += 0.03
             pyr_depth -= 2
