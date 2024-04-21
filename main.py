@@ -468,6 +468,7 @@ def evaluate_predictions(annotations, predicted_icons):
     true_positives = 0
     false_positives = 0
     false_negatives = 0
+    iou_sum = 0
 
     # Iterate over each predicted class
     for prediction in predicted_icons:
@@ -499,6 +500,7 @@ def evaluate_predictions(annotations, predicted_icons):
             annotated_area = (annotated_bottom - annotated_top) * (annotated_right - annotated_left)
             union_area = predicted_area + annotated_area - intersection_area
             iou = intersection_area / union_area
+            iou_sum += iou
 
             print(f"Predicted {icon_name} with IoU score {iou}")
 
@@ -519,7 +521,7 @@ def evaluate_predictions(annotations, predicted_icons):
             false_negatives += 1
             print(f"Failed to predict icon {icon_name}")
 
-    return (true_positives, false_positives, false_negatives)
+    return (true_positives, false_positives, false_negatives, iou_sum)
 
 def searchImage(img, test_icons, test_coords, threshold, pyr_depth):
     predicted_icons = []
@@ -616,6 +618,7 @@ def testTask2(iconDir, testDir):
     overall_TPs = 0
     overall_FPs = 0
     overall_FNs = 0
+    overall_iou = 0
 
     for image_index, image in enumerate(images):
         # icon name, top, left, bottom, right
@@ -679,11 +682,12 @@ def testTask2(iconDir, testDir):
             if layer == 0:
                 # Evaluate the predicted icons
                 annotations = pd.read_csv(f'./{testDir}/annotations/test_image_{image_index + 1}.csv')
-                (true_positives, false_positives, false_negatives) = evaluate_predictions(annotations, predictions)
+                (true_positives, false_positives, false_negatives, iou_sum) = evaluate_predictions(annotations, predictions)
 
                 overall_TPs += true_positives
                 overall_FPs += false_positives
                 overall_FNs += false_negatives
+                overall_iou += iou_sum
 
                 # Show all the detected icons in the current image
                 plt.imshow(display_image, cmap='gray')
@@ -696,6 +700,7 @@ def testTask2(iconDir, testDir):
 
     # Evaluate the performance over all images
     print(f"Overall TPs: {overall_TPs}, Overall FPs: {overall_FPs}, Overall FNs: {overall_FNs}")
+    print(f"Overall IoU: {overall_iou}")
 
     # How often it detected an object when the object was not there
     # false_positive_rate = false_positives / (false_positives + true_negatives)
