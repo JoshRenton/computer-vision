@@ -456,14 +456,6 @@ def matchTemplateWithCoords(img, template, coords):
 
     return corr_scores, corr_coords
 
-def minMaxLoc(corr):
-    min_value = np.min(corr)
-    max_value = np.max(corr)
-    min_index = np.unravel_index(np.argmin(corr, axis=None), corr.shape)
-    max_index = np.unravel_index(np.argmax(corr, axis=None), corr.shape)
-    # Have to flip because of opencv reversing (x,y) coordinates
-    return min_value, max_value, np.flip(min_index), np.flip(max_index)
-
 def evaluate_predictions(annotations, predicted_icons):
     true_positives = 0
     false_positives = 0
@@ -528,7 +520,9 @@ def searchImage(img, test_icons, test_coords, threshold, pyr_depth):
     index = 0
 
     for icon_name, icon in test_icons:
+        # score, location, template_index
         best_match = (0, 0, -1)
+
         # Currently creating pyramid every time
         templates = build_gaussian_pyramid(icon, pyr_depth)
         r_icon = cv2.resize(icon, (int(icon.shape[0] * 0.75), int(icon.shape[1] * 0.75)))
@@ -621,7 +615,8 @@ def testTask2(iconDir, testDir):
     overall_iou = 0
 
     for image_index, image in enumerate(images):
-        # icon name, top, left, bottom, right
+        print(f'Image {image_index + 1}')
+
         test_icons = zip(icon_names, icons)
         test_coords = None
 
@@ -642,11 +637,11 @@ def testTask2(iconDir, testDir):
             test_icons = []
             test_coords = []
             predictions = []
-
-            for match in predicted_icons:
-                icon_name = match[0]
-                best_match = match[1]
-                match_size = match[2]
+            
+            for prediction in predicted_icons:
+                icon_name = prediction[0]
+                best_match = prediction[1] # (score, location, template_index)
+                match_size = prediction[2]
 
                 icon_index = icon_names.index(icon_name)
                 test_icons.append((icon_name, icons[icon_index]))
