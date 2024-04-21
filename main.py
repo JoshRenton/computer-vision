@@ -625,12 +625,15 @@ def testTask2(iconDir, testDir):
 
         threshold = 0.85
         pyr_depth = 6
-        # Start at smallest resolution
-        for layer in range(len(img_pyr) - 1, -1, -1):
 
-            img = img_pyr[layer]
-            norm_img = normalize_img(img)
-            display_image = img.copy()
+        # icon name, top, left, bottom, right
+        predictions = []
+
+        # Generating predictions for each layer of the pyramid, starting with the top layer - the smallest
+        # The predictions for each layer refine the predictions in the next layer
+        for layer in reversed(img_pyr):
+            norm_img = normalize_img(layer)
+            # display_image = img.copy() # Used for displaying the predicted icons
             
             # Predict which icons are in the image
             predicted_icons = searchImage(norm_img, test_icons, test_coords, threshold, pyr_depth)
@@ -674,24 +677,23 @@ def testTask2(iconDir, testDir):
 
                 predictions.append([icon_name, top_left[0], top_left[1], bottom_right[0], bottom_right[1]])
 
-            if layer == 0:
-                # Evaluate the predicted icons
-                annotations = pd.read_csv(f'./{testDir}/annotations/test_image_{image_index + 1}.csv')
-                (true_positives, false_positives, false_negatives, iou_sum) = evaluate_predictions(annotations, predictions)
-
-                overall_TPs += true_positives
-                overall_FPs += false_positives
-                overall_FNs += false_negatives
-                overall_iou += iou_sum
-
-                # Show all the detected icons in the current image
-                plt.imshow(display_image, cmap='gray')
-                plt.title(f'Image {image_index + 1}')
-                plt.xticks([]), plt.yticks([])
-                plt.show()
-
             threshold += 0.03
             pyr_depth -= 1
+
+        # Evaluate the predicted icons
+        annotations = pd.read_csv(f'./{testDir}/annotations/test_image_{image_index + 1}.csv')
+        (true_positives, false_positives, false_negatives, iou_sum) = evaluate_predictions(annotations, predictions)
+
+        overall_TPs += true_positives
+        overall_FPs += false_positives
+        overall_FNs += false_negatives
+        overall_iou += iou_sum
+
+        # Show all the detected icons in the current image
+        # plt.imshow(display_image, cmap='gray')
+        # plt.title(f'Image {image_index + 1}')
+        # plt.xticks([]), plt.yticks([])
+        # plt.show()
 
     # Evaluate the performance over all images
     print(f"Overall TPs: {overall_TPs}, Overall FPs: {overall_FPs}, Overall FNs: {overall_FNs}")
