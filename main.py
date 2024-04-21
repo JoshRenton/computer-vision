@@ -515,37 +515,30 @@ def evaluate_predictions(annotations, predicted_icons):
 
     return (true_positives, false_positives, false_negatives, iou_sum)
 
-def searchImage(img, test_icons, test_coords, threshold, pyr_depth):
+def searchImage(img, test_coords, threshold, pyr_depth, icon_indicies, icon_pyramids):
     predicted_icons = []
-    index = 0
+    is_initial_search = test_coords == None
 
-    for icon_name, icon in test_icons:
+    for index, icon_index in enumerate(icon_indicies):
         # score, location, template_index
         best_match = (0, 0, -1)
 
-        # Currently creating pyramid every time
-        templates = build_gaussian_pyramid(icon, pyr_depth)
-        r_icon = cv2.resize(icon, (int(icon.shape[0] * 0.75), int(icon.shape[1] * 0.75)))
-        r_templates = build_gaussian_pyramid(r_icon, pyr_depth)
-        ori_templates = copy.deepcopy(templates)
-        templates = []
-        for i in range(0, len(ori_templates)):
-            templates.append(ori_templates[i])
-            templates.append(r_templates[i])
-            
-        # Multi-scale template matching, keeping only the best match
-        # Only do full search of all templates on smallest image size
-        if test_coords == None:
-            for idx, templ in enumerate(templates):
+        # Only want to access the first 'pyr_depth' layers of the pyramid
+        icon_templates = icon_pyramids[icon_index][:pyr_depth] # FIXME: pyr_depth won't work if we're adding 75% layers
+
+        # Multi-scale template matching - keeping only the best matching template for this icon
+        if is_initial_search:
+            # This top layer is the only layer that is searched for all icons
+            for templ_index, templ in enumerate(icon_templates):
                 result = matchTemplate(img, templ)
                 _, max_val, _, max_loc = cv2.minMaxLoc(result)
 
                 if best_match[0] < max_val:
                     # Update best_match
-                    best_match = (max_val, max_loc, idx)
+                    best_match = (max_val, max_loc, templ_index)
         else:
             # Search for icons identified in previous layer around the matching upscaled coords
-            for idx, templ in enumerate(templates):
+            for templ_index, templ in enumerate(icon_templates):
                 result, result_coords = matchTemplateWithCoords(img, templ, test_coords[index])
                 if result == None or result_coords == None:
                     continue
@@ -555,9 +548,7 @@ def searchImage(img, test_icons, test_coords, threshold, pyr_depth):
 
                 if best_match[0] < max_val:
                     # Update best_match
-                    best_match = (max_val, max_loc, idx)
-
-            index += 1
+                    best_match = (max_val, max_loc, templ_index)
 
         # Thresholding to prevent false positives
         # Increased threshold after lowest resolution search
@@ -571,10 +562,10 @@ def searchImage(img, test_icons, test_coords, threshold, pyr_depth):
         if (best_match[0] < threshold):
             continue
 
-        best_template = templates[best_match[2]]
+        best_template = icon_templates[best_match[2]]
         match_size = best_template.shape[::-1]
 
-        predicted_icons.append([icon_name, best_match, match_size])
+        predicted_icons.append([icon_index, best_match, match_size])
     
     return predicted_icons
 
@@ -582,17 +573,27 @@ def searchImage(img, test_icons, test_coords, threshold, pyr_depth):
 def testTask2(iconDir, testDir):
     # Retrieve all the icons (train images)
     icon_folder = f'./{iconDir}/png'
-    icons = []
     icon_names = []
+    icon_pyramids = []
     for filename in os.listdir(icon_folder):
         # Remove the leading zero and the file extension
         icon_names.append(filename[1:].rsplit(".", 1)[0])
 
         icon_path = os.path.join(icon_folder, filename)
         icon = cv2.imread(icon_path, cv2.IMREAD_GRAYSCALE)
-        blurred_icon = cv2.GaussianBlur(icon, ksize=(5,5), sigmaX=0)
-        icons.append(blurred_icon)
 
+        # TODO: Does pyrdown blur the images for us???
+        # blurred_icon = cv2.GaussianBlur(icon, ksize=(5,5), sigmaX=0)
+
+        G = icon.copy()
+        pyramid = [icon]
+        for _ in range(6):
+            # Downsize G by 25%
+            half_step = cv2.resize(G, (0,0), fx=0.75, fy=0.75)
+            G = cv2.pyrDown(G)
+            pyramid.append(half_step)
+            pyramid.append(G)
+        icon_pyramids.append(pyramid)
     image_folder = f'./{testDir}/images'
     images = []
     image_names = os.listdir(image_folder)
@@ -606,8 +607,8 @@ def testTask2(iconDir, testDir):
 
     # methods = ['cv2.TM_CCOEFF', 'cv2.TM_CCOEFF_NORMED', 'cv2.TM_CCORR',
     # 'cv2.TM_CCORR_NORMED', 'cv2.TM_SQDIFF', 'cv2.TM_SQDIFF_NORMED']
-    method = ['cv2.TM_CCOEFF_NORMED']
-    method = eval(method[0])
+    # method = ['cv2.TM_CCOEFF_NORMED']
+    # method = eval(method[0])
 
     overall_TPs = 0
     overall_FPs = 0
@@ -617,37 +618,36 @@ def testTask2(iconDir, testDir):
     for image_index, image in enumerate(images):
         print(f'Image {image_index + 1}')
 
-        test_icons = zip(icon_names, icons)
-        test_coords = None
-
         # Create gaussian pyramid of test_image
         img_pyr = build_gaussian_pyramid(image, 3)
 
         threshold = 0.85
-        pyr_depth = 6
+        pyr_depth = len(icon_pyramids[0])
+        icon_indicies = list(range(len(icon_names))) # Redo the loop so this can be defined outside the loop - recursion
 
-        # icon name, top, left, bottom, right
-        predictions = []
+        # icon index, top, left, bottom, right
+        # NOTE: Doesn't need to be defined here
+        final_predictions = []
 
         # Generating predictions for each layer of the pyramid, starting with the top layer - the smallest
         # The predictions for each layer refine the predictions in the next layer
         for layer in reversed(img_pyr):
             norm_img = normalize_img(layer)
             # display_image = img.copy() # Used for displaying the predicted icons
-            
+
             # Predict which icons are in the image
-            predicted_icons = searchImage(norm_img, test_icons, test_coords, threshold, pyr_depth)
-            test_icons = []
+            predicted_icons = searchImage(norm_img, test_coords, threshold, pyr_depth, icon_indicies, icon_pyramids)
+            icon_indicies = []
             test_coords = []
-            predictions = []
+            final_predictions = []
             
             for prediction in predicted_icons:
-                icon_name = prediction[0]
+                icon_index = prediction[0]
                 best_match = prediction[1] # (score, location, template_index)
                 match_size = prediction[2]
 
-                icon_index = icon_names.index(icon_name)
-                test_icons.append((icon_name, icons[icon_index]))
+                # Updating these lists for the next layer
+                icon_indicies.append(icon_index)    
                 test_coords.append((best_match[1][0] * 2, best_match[1][1] * 2))
 
                 # TODO: Understand how the max_loc from minMaxLoc is used to get the location on the original image
@@ -678,11 +678,13 @@ def testTask2(iconDir, testDir):
                 predictions.append([icon_name, top_left[0], top_left[1], bottom_right[0], bottom_right[1]])
 
             threshold += 0.03
-            pyr_depth -= 1
+            pyr_depth -= 2
 
         # Evaluate the predicted icons
         annotations = pd.read_csv(f'./{testDir}/annotations/test_image_{image_index + 1}.csv')
-        (true_positives, false_positives, false_negatives, iou_sum) = evaluate_predictions(annotations, predictions)
+        # Convert the icon index to the icon name
+        final_predictions = [[icon_names[prediction[0]]] + prediction[1:] for prediction in final_predictions]
+        (true_positives, false_positives, false_negatives, iou_sum) = evaluate_predictions(annotations, final_predictions)
 
         overall_TPs += true_positives
         overall_FPs += false_positives
