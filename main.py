@@ -6,6 +6,7 @@ from matplotlib import pyplot as plt
 import os
 import copy
 import argparse
+from datetime import datetime
 
 def HoughLines(edges, rho_res, theta_res, threshold):
     """
@@ -692,6 +693,7 @@ def testTask2(iconDir, testDir):
     overall_FPs = 0
     overall_FNs = 0
     overall_iou = 0
+    time_taken = []
 
     icon_indicies = list(range(len(icon_names)))
     pyr_depth = len(icon_pyramids[0])
@@ -708,9 +710,11 @@ def testTask2(iconDir, testDir):
         # Predict which icons are in the image, by recursively searching each layer of the image pyramid - starting at the top
         # Searching only for the icons predicted in the previous layer at specific locations
         # final_predictions = (icon index, top, left, bottom, right)
+        start=datetime.now()
         final_predictions = recursiveIconPrediction(img_pyr, threshold, icon_pyramids, icon_indicies, test_coords=None, pyr_depth=pyr_depth, depth=len(img_pyr)-1)
 
         # print(f"Score for {icon_name} = {best_match[0]} with template {best_match[2]} @ {best_match[1]}")
+        elapsed_time = datetime.now() - start
 
         # Convert the icon index to the icon name
         final_predictions = [[icon_names[prediction[0]]] + prediction[1:] for prediction in final_predictions]
@@ -725,10 +729,23 @@ def testTask2(iconDir, testDir):
         overall_FPs += false_positives
         overall_FNs += false_negatives
         overall_iou += iou_sum
+        time_taken.append(elapsed_time.total_seconds())
 
     # Evaluate the performance over all images
     print(f"Overall TPs: {overall_TPs}, Overall FPs: {overall_FPs}, Overall FNs: {overall_FNs}")
     print(f"Overall IoU: {overall_iou}")
+    
+    # Plot the icon prediction runtime for each image
+    # plt.bar(range(len(time_taken)), time_taken)
+    # plt.xlabel('Image')
+    # plt.xticks(range(len(time_taken)), [str(i) for i in range(1, len(time_taken) + 1)])
+    # plt.ylabel('Time Taken (seconds)')
+    # plt.title('Icon prediction runtime')
+    # plt.show()
+
+    average_time = sum(time_taken) / len(time_taken)
+    print(f"Average time taken: {average_time}")
+    print(f'Overall runtime: {sum(time_taken)}')
 
     # How often it detected an object when the object was not there
     # false_positive_rate = false_positives / (false_positives + true_negatives)
