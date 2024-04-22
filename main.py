@@ -618,25 +618,14 @@ def testTask2(iconDir, testDir):
         # TODO: Does pyrdown blur the images for us???
         # blurred_icon = cv2.GaussianBlur(icon, ksize=(5,5), sigmaX=0)
 
-        G = icon.copy()
-        pyramid = [icon]
-        for _ in range(6):
-            # Downsize G by 25%
-            half_step = cv2.resize(G, (0,0), fx=0.75, fy=0.75)
-            G = cv2.pyrDown(G)
-            pyramid.append(half_step)
-            pyramid.append(G)
-        icon_pyramids.append(pyramid)
-
-        # templates = build_gaussian_pyramid(icon, 6)
-        # r_icon = cv2.resize(icon, dsize=None, fx=0.75, fy=0.75)
-        # r_templates = build_gaussian_pyramid(r_icon, 6)
-        # ori_templates = copy.deepcopy(templates)
-        # templates = []
-        # for i in range(0, len(ori_templates)):
-        #     templates.append(ori_templates[i])
-        #     templates.append(r_templates[i])
-        # icon_pyramids.append(templates) # 14 layers per icon
+        templates = build_gaussian_pyramid(icon, 6)
+        half_step = cv2.resize(icon, dsize=None, fx=0.75, fy=0.75)
+        half_step_templates = build_gaussian_pyramid(half_step, 6)
+        icon_pyr = []
+        for i in range(0, len(templates)):
+            icon_pyr.append(templates[i])
+            icon_pyr.append(half_step_templates[i])
+        icon_pyramids.append(icon_pyr) # 14 layers per icon
 
     # Print the shape of all the layers in the first pyramid in icon_pyramids
     # for layer in icon_pyramids[0]:
