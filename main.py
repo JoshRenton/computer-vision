@@ -518,16 +518,20 @@ def evaluate_predictions(annotations, predicted_icons):
 
     return (true_positives, false_positives, false_negatives, iou_sum)
 
-def searchImage(img, test_coords, threshold, pyr_depth, icon_indicies, icon_pyramids):
+def recursiveIconPrediction(img_pyr, threshold, icon_pyramids, icon_indicies, test_coords, pyr_depth, depth):
+    img = img_pyr[depth]
+    img = normalize_img(img)
+
     predicted_icons = []
     is_initial_search = test_coords == None
 
+    # Generate icon predictions for this layer
     for index, icon_index in enumerate(icon_indicies):
         # score, location, template_index
         best_match = (0, 0, -1)
 
         # Only want to access the first 'pyr_depth' layers of the pyramid
-        icon_templates = icon_pyramids[icon_index][:pyr_depth] # FIXME: pyr_depth won't work if we're adding 75% layers
+        icon_templates = icon_pyramids[icon_index][:pyr_depth]
 
         # Multi-scale template matching - keeping only the best matching template for this icon
         if is_initial_search:
@@ -570,8 +574,34 @@ def searchImage(img, test_coords, threshold, pyr_depth, icon_indicies, icon_pyra
 
         predicted_icons.append([icon_index, best_match, match_size])
     
-    return predicted_icons
+    # Base case - return final predictions
+    if depth == 0:
+        final_predictions = []
+        for prediction in predicted_icons:
+            icon_index = prediction[0]
+            best_match = prediction[1]
+            match_size = prediction[2]
 
+            w, h = match_size
+            top_left = best_match[1]
+            bottom_right = (top_left[0] + w, top_left[1] + h)
+
+            # final_predictions.append([icon_index, top_left[0], top_left[1], bottom_right[0], bottom_right[1]])
+            final_predictions.append([icon_index, *top_left, *bottom_right])
+        return final_predictions
+
+    # Otherwise use the predictions to update the search on the next layer down
+    icon_indicies = []
+    test_coords = []
+    for prediction in predicted_icons:
+        icon_index = prediction[0]
+        best_match = prediction[1] # (score, location, template_index)
+        icon_indicies.append(icon_index)    
+        # Upscale the best match location
+        # FIXME: This only works properly if we are downsampling by 50% each time
+        test_coords.append((best_match[1][0] * 2, best_match[1][1] * 2))
+
+    return recursiveIconPrediction(img_pyr, threshold+0.03, icon_pyramids, icon_indicies, test_coords, pyr_depth-2, depth-1)
 
 def testTask2(iconDir, testDir):
     # Retrieve all the icons (train images)
@@ -609,8 +639,8 @@ def testTask2(iconDir, testDir):
         # icon_pyramids.append(templates) # 14 layers per icon
 
     # Print the shape of all the layers in the first pyramid in icon_pyramids
-    for layer in icon_pyramids[0]:
-        print(layer.shape)
+    # for layer in icon_pyramids[0]:
+    #     print(layer.shape)
 
     image_folder = f'./{testDir}/images'
     images = []
@@ -633,70 +663,48 @@ def testTask2(iconDir, testDir):
     overall_FNs = 0
     overall_iou = 0
 
+    icon_indicies = list(range(len(icon_names)))
+    pyr_depth = len(icon_pyramids[0])
+    threshold = 0.85
+
     for image_index, image in enumerate(images):
         print(f'Image {image_index + 1}')
 
         # Create gaussian pyramid of test_image
         img_pyr = build_gaussian_pyramid(image, 3)
 
-        threshold = 0.85
-        pyr_depth = len(icon_pyramids[0])
-        test_coords = None # FIXME: rename
-        icon_indicies = list(range(len(icon_names))) # Redo the loop so this can be defined outside the loop - recursion
+        # test_coords = None # FIXME: rename
 
-        # icon index, top, left, bottom, right
-        # NOTE: Doesn't need to be defined here
-        final_predictions = []
+        # Predict which icons are in the image, by recursively searching each layer of the image pyramid - starting at the top
+        # Searching only for the icons predicted in the previous layer at specific locations
+        # final_predictions = (icon index, top, left, bottom, right)
+        final_predictions = recursiveIconPrediction(img_pyr, threshold, icon_pyramids, icon_indicies, test_coords=None, pyr_depth=pyr_depth, depth=len(img_pyr)-1)
 
-        # Generating predictions for each layer of the pyramid, starting with the top layer - the smallest
-        # The predictions for each layer refine the predictions in the next layer
-        for layer in reversed(img_pyr):
-            norm_img = normalize_img(layer)
-            # display_image = img.copy() # Used for displaying the predicted icons
+        # print(f"Score for {icon_name} = {best_match[0]} with template {best_match[2]} @ {best_match[1]}")
 
-            # Predict which icons are in the image
-            predicted_icons = searchImage(norm_img, test_coords, threshold, pyr_depth, icon_indicies, icon_pyramids)
-            icon_indicies = []
-            test_coords = []
-            final_predictions = []
-            
-            for prediction in predicted_icons:
-                icon_index = prediction[0]
-                best_match = prediction[1] # (score, location, template_index)
-                match_size = prediction[2]
+        # TODO: Create a function for generating an image with bounding boxes from icon predictions of an image
 
-                # Updating these lists for the next layer
-                icon_indicies.append(icon_index)    
-                test_coords.append((best_match[1][0] * 2, best_match[1][1] * 2))
+        # display_image = img.copy() # Used for displaying the predicted icons
+        # Bounding box
+        # cv2.rectangle(display_image, top_left, bottom_right, 0, 2)
+        # font = cv2.FONT_HERSHEY_SIMPLEX
+        # bottom_left = (top_left[0], top_left[1] - 5)  # Position the text at the bottom left of the rectangle
+        # cv2.putText(display_image, icon_name, bottom_left, font, 0.5, 0, 1, cv2.LINE_AA)
 
-                # TODO: Understand how the max_loc from minMaxLoc is used to get the location on the original image
-                print(f"Score for {icon_name} = {best_match[0]} with template {best_match[2]} @ {best_match[1]}")
+        # Show all the detected icons in the current image
+        # plt.imshow(display_image, cmap='gray')
+        # plt.title(f'Image {image_index + 1}')
+        # plt.xticks([]), plt.yticks([])
+        # plt.show()
 
-                w, h = match_size
-                top_left = best_match[1]
-                bottom_right = (top_left[0] + w, top_left[1] + h)
-
-                print(top_left, bottom_right)
-                print(best_match)
-                print("")
-                final_predictions.append([icon_index, top_left[0], top_left[1], bottom_right[0], bottom_right[1]])
-                
-                # Bounding box
-                cv2.rectangle(display_image, top_left, bottom_right, 0, 2)
-                font = cv2.FONT_HERSHEY_SIMPLEX
-                bottom_left = (top_left[0], top_left[1] - 5)  # Position the text at the bottom left of the rectangle
-                cv2.putText(display_image, icon_name, bottom_left, font, 0.5, 0, 1, cv2.LINE_AA)
-                # Plots
-                # res = cv2.matchTemplate(image, best_template, method)
-                # plt.subplot(121),plt.imshow(res,cmap = 'gray')
-                # plt.title('Matching Result'), plt.xticks([]), plt.yticks([])
-                # plt.subplot(122),plt.imshow(display_image,cmap = 'gray')
-                # plt.title('Detected Point'), plt.xticks([]), plt.yticks([])
-                # plt.suptitle('Template ' + str(best_match[2]))
-                # plt.show()
-
-            threshold += 0.03
-            pyr_depth -= 2
+        # Plots
+        # res = cv2.matchTemplate(image, best_template, method)
+        # plt.subplot(121),plt.imshow(res,cmap = 'gray')
+        # plt.title('Matching Result'), plt.xticks([]), plt.yticks([])
+        # plt.subplot(122),plt.imshow(display_image,cmap = 'gray')
+        # plt.title('Detected Point'), plt.xticks([]), plt.yticks([])
+        # plt.suptitle('Template ' + str(best_match[2]))
+        # plt.show()
 
         # Evaluate the predicted icons
         annotations = pd.read_csv(f'./{testDir}/annotations/test_image_{image_index + 1}.csv')
@@ -708,12 +716,6 @@ def testTask2(iconDir, testDir):
         overall_FPs += false_positives
         overall_FNs += false_negatives
         overall_iou += iou_sum
-
-        # Show all the detected icons in the current image
-        # plt.imshow(display_image, cmap='gray')
-        # plt.title(f'Image {image_index + 1}')
-        # plt.xticks([]), plt.yticks([])
-        # plt.show()
 
     # Evaluate the performance over all images
     print(f"Overall TPs: {overall_TPs}, Overall FPs: {overall_FPs}, Overall FNs: {overall_FNs}")
