@@ -4,7 +4,6 @@ import cv2
 import pandas as pd
 from matplotlib import pyplot as plt
 import os
-import copy
 import argparse
 from datetime import datetime
 
@@ -570,6 +569,8 @@ def recursiveIconPrediction(img_pyr, threshold, icon_pyramids, icon_indicies, te
         if (best_match[0] < threshold):
             continue
 
+        # print(f"Score for icon {icon_index} = {best_match[0]} with template {best_match[2]} @ {best_match[1]}")
+
         best_template = icon_templates[best_match[2]]
         match_size = best_template.shape[::-1]
 
@@ -669,10 +670,6 @@ def testTask2(iconDir, testDir):
         #     templates.append(r_templates[i])
         # icon_pyramids.append(templates) # 14 layers per icon
 
-    # Print the shape of all the layers in the first pyramid in icon_pyramids
-    # for layer in icon_pyramids[0]:
-    #     print(layer.shape)
-
     image_folder = f'./{testDir}/images'
     images = []
     image_names = os.listdir(image_folder)
@@ -712,8 +709,6 @@ def testTask2(iconDir, testDir):
         # final_predictions = (icon index, top, left, bottom, right)
         start=datetime.now()
         final_predictions = recursiveIconPrediction(img_pyr, threshold, icon_pyramids, icon_indicies, test_coords=None, pyr_depth=pyr_depth, depth=len(img_pyr)-1)
-
-        # print(f"Score for {icon_name} = {best_match[0]} with template {best_match[2]} @ {best_match[1]}")
         elapsed_time = datetime.now() - start
 
         # Convert the icon index to the icon name
