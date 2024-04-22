@@ -603,6 +603,36 @@ def recursiveIconPrediction(img_pyr, threshold, icon_pyramids, icon_indicies, te
 
     return recursiveIconPrediction(img_pyr, threshold+0.03, icon_pyramids, icon_indicies, test_coords, pyr_depth-2, depth-1)
 
+# Displaying all the predicted icons (and their bounding boxes) on the image
+def show_predictions(image, image_index, predictions):
+    display_image = image.copy() # Used for displaying the predicted icons
+
+    # Generate a bounding box for each icon prediction
+    for prediction in predictions:
+        icon_name = prediction[0]
+        top_left = (prediction[1], prediction[2])
+        bottom_right = (prediction[3], prediction[4])
+
+        cv2.rectangle(display_image, top_left, bottom_right, 0, 2)
+        font = cv2.FONT_HERSHEY_SIMPLEX
+        bottom_left = (top_left[0], top_left[1] - 5)  # Position the text at the bottom left of the rectangle
+        cv2.putText(display_image, icon_name, bottom_left, font, 0.5, 0, 1, cv2.LINE_AA)
+
+    # Show all the detected icons in the current image
+    plt.imshow(display_image, cmap='gray')
+    plt.title(f'Image {image_index + 1}')
+    plt.xticks([]), plt.yticks([])
+    plt.show()
+    
+    # Plots
+    # res = cv2.matchTemplate(image, best_template, method)
+    # plt.subplot(121),plt.imshow(res,cmap = 'gray')
+    # plt.title('Matching Result'), plt.xticks([]), plt.yticks([])
+    # plt.subplot(122),plt.imshow(display_image,cmap = 'gray')
+    # plt.title('Detected Point'), plt.xticks([]), plt.yticks([])
+    # plt.suptitle('Template ' + str(best_match[2]))
+    # plt.show()
+
 def testTask2(iconDir, testDir):
     # Retrieve all the icons (train images)
     icon_folder = f'./{iconDir}/png'
@@ -682,35 +712,14 @@ def testTask2(iconDir, testDir):
 
         # print(f"Score for {icon_name} = {best_match[0]} with template {best_match[2]} @ {best_match[1]}")
 
-        # TODO: Create a function for generating an image with bounding boxes from icon predictions of an image
-
-        # display_image = img.copy() # Used for displaying the predicted icons
-        # Bounding box
-        # cv2.rectangle(display_image, top_left, bottom_right, 0, 2)
-        # font = cv2.FONT_HERSHEY_SIMPLEX
-        # bottom_left = (top_left[0], top_left[1] - 5)  # Position the text at the bottom left of the rectangle
-        # cv2.putText(display_image, icon_name, bottom_left, font, 0.5, 0, 1, cv2.LINE_AA)
-
-        # Show all the detected icons in the current image
-        # plt.imshow(display_image, cmap='gray')
-        # plt.title(f'Image {image_index + 1}')
-        # plt.xticks([]), plt.yticks([])
-        # plt.show()
-
-        # Plots
-        # res = cv2.matchTemplate(image, best_template, method)
-        # plt.subplot(121),plt.imshow(res,cmap = 'gray')
-        # plt.title('Matching Result'), plt.xticks([]), plt.yticks([])
-        # plt.subplot(122),plt.imshow(display_image,cmap = 'gray')
-        # plt.title('Detected Point'), plt.xticks([]), plt.yticks([])
-        # plt.suptitle('Template ' + str(best_match[2]))
-        # plt.show()
+        # Convert the icon index to the icon name
+        final_predictions = [[icon_names[prediction[0]]] + prediction[1:] for prediction in final_predictions]
 
         # Evaluate the predicted icons
         annotations = pd.read_csv(f'./{testDir}/annotations/test_image_{image_index + 1}.csv')
-        # Convert the icon index to the icon name
-        final_predictions = [[icon_names[prediction[0]]] + prediction[1:] for prediction in final_predictions]
         (true_positives, false_positives, false_negatives, iou_sum) = evaluate_predictions(annotations, final_predictions)
+
+        # show_predictions(image, image_index, final_predictions)
 
         overall_TPs += true_positives
         overall_FPs += false_positives
