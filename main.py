@@ -394,10 +394,8 @@ def build_gaussian_pyramid(image, downsamples):
 
     # TODO: Rename variables
     for _ in range(downsamples):
-        # half_step = cv2.resize(G, dsize=None, fx=0.75, fy=0.75) # 25% downscale
         G = cv2.pyrDown(G) # 50% downscale
         pyramid.append(G)
-        # pyramid.append(half_step)
     return pyramid
 
 def build_laplacian_pyramid(gp):
@@ -413,46 +411,65 @@ def normalize_img(img):
     norm_img = img - np.mean(img)
     return norm_img
 
-# Calculate correlation for given patch
-def correlation(template, img, offset_x, offset_y):
-    img_patch = img[offset_y:offset_y + template.shape[0], offset_x:offset_x + template.shape[1]]
-    img_std = np.std(img_patch)
-    if img_std == 0:
-        return -1
-    correlation = img_patch * template
-    correlation = correlation / (img_std * np.std(template))
-    return np.sum(correlation) / (template.shape[0] * template.shape[1])
+# Calculate ncc for all patches
+def normalised_cross_correlation(patches, template):
+    # patches = a 4D array
+
+    # keepdims=True - the mean array will also be 4D so we can easily use it with the patches array
+    # axis(2, 3) - the mean is calculated on the last 2 dimensions - the patch itself
+    patch_means = np.mean(patches, axis=(2, 3), keepdims=True)
+    patches_deviation = patches - patch_means
+    template_deviation = template - np.mean(template)
+
+    # Compute the normalized cross-correlation
+    cross_correlation = np.sum(patches_deviation * template_deviation, axis=(2, 3))
+    denominator = np.sqrt(np.sum(patches_deviation**2, axis=(2, 3)) * np.sum(template_deviation**2)) + 1e-6
+    ncc_scores = cross_correlation / denominator
+
+    # img_std = np.std(patches, axis=(2, 3))
+    # denominator = (img_std * np.std(template) + 1e-6) * template.shape[0] * template.shape[1]
+    # ncc_scores = cross_correlation / denominator
+
+    return ncc_scores
 
 def matchTemplate(img, template):
-    if template.shape[1] > img.shape[1] or template.shape[0] > img.shape[0]:
-        return np.array([0])
-    
-    norm_template = normalize_img(template)
-    corr_scores = np.zeros((img.shape[0] - template.shape[0] + 1, img.shape[1] - template.shape[1] + 1))
-    for y in range(0, img.shape[0] - template.shape[0] + 1):
-        for x in range(0, img.shape[1] - template.shape[1] + 1):
-            corr = correlation(norm_template, img, x, y)
-            corr_scores[y][x] = corr
+    img_height, img_width = img.shape
+    templ_height, templ_width = template.shape
 
-    return corr_scores
+    if templ_width > img_width or templ_height > img_height:
+        return np.array([0])
+
+    # Create a sliding window view of the image - generating all the patches from the image
+    # patches = a 4D array -> A 2D array where each element is a patch of the image (with the same shape as the template)
+    # The position of the patch in the 2D array is the position of the top-left corner of the patch in the image
+    patches = np.lib.stride_tricks.sliding_window_view(img, template.shape)
+    # NOTE: Would be quicker to pre-calculate these patches for the set template sizes, but it's quick enough
+
+    return normalised_cross_correlation(patches, template)
 
 def matchTemplateWithCoords(img, template, coords):
-    if template.shape[1] > img.shape[1] or template.shape[0] > img.shape[0]:
+    img_height, img_width = img.shape
+    templ_height, templ_width = template.shape
+
+    if templ_width > img_width or templ_height > img_height:
         return None, None
     
-    norm_template = normalize_img(template)
-    corr_scores = []
-    corr_coords = []
+    y = coords[1]
+    x = coords[0]
+    # Calculate the start and end indices for the y and x dimensions
+    offset = 3
+    y_start = max(0, y - offset)
+    x_start = max(0, x - offset)
+    y_end = min(img_height - templ_height + 1, y + offset)
+    x_end = min(img_width  - templ_width  + 1, x + offset)
 
-    test_x, test_y = coords
+    patches = np.lib.stride_tricks.sliding_window_view(img, template.shape)
+    patches = patches[y_start:y_end, x_start:x_end] # Select the relevant patches
+    corr_scores = normalised_cross_correlation(patches, template)
 
-    for y in range(test_y - 10, test_y + 10):
-        if y >= 0 and y < img.shape[0] - template.shape[0] + 1:
-            for x in range(test_x - 10, test_x + 10):
-                if x >= 0 and x < img.shape[1] - template.shape[1] + 1:
-                    corr = correlation(norm_template, img, x, y)
-                    corr_scores.append(corr)
-                    corr_coords.append((x, y))
+    # Flatten corr_scores as the grid can't be used to get the coordinates 
+    corr_scores = corr_scores.flatten().tolist()
+    corr_coords = [(x, y) for y in range(y_start, y_end) for x in range(x_start, x_end)]
 
     if len(corr_scores) == 0:
         return None, None
@@ -520,7 +537,6 @@ def evaluate_predictions(annotations, predicted_icons):
 
 def recursiveIconPrediction(img_pyr, threshold, icon_pyramids, icon_indicies, test_coords, pyr_depth, depth):
     img = img_pyr[depth]
-    img = normalize_img(img)
 
     predicted_icons = []
     is_initial_search = test_coords == None
@@ -536,10 +552,14 @@ def recursiveIconPrediction(img_pyr, threshold, icon_pyramids, icon_indicies, te
         # Multi-scale template matching - keeping only the best matching template for this icon
         if is_initial_search:
             # This top layer is the only layer that is searched for all icons
+
+            # TODO: Play around with this to test speed vs accuracy
+            # Templates bigger than the image are not run anyways so that's why skipping the first x layers doesn't make a diff
+            # icon_templates = icon_pyramids[icon_index][8:pyr_depth-1]
+
             for templ_index, templ in enumerate(icon_templates):
                 result = matchTemplate(img, templ)
                 _, max_val, _, max_loc = cv2.minMaxLoc(result)
-
                 if best_match[0] < max_val:
                     # Update best_match
                     best_match = (max_val, max_loc, templ_index)
@@ -558,21 +578,12 @@ def recursiveIconPrediction(img_pyr, threshold, icon_pyramids, icon_indicies, te
                     best_match = (max_val, max_loc, templ_index)
 
         # Thresholding to prevent false positives
-        # Increased threshold after lowest resolution search
-        # if test_coords == None:
-        #     if (best_match[0] < 0.85):
-        #         continue
-        # else:
-        #     if (best_match[0] < 0.95):
-        #         continue
-            
         if (best_match[0] < threshold):
             continue
 
-        # print(f"Score for icon {icon_index} = {best_match[0]} with template {best_match[2]} @ {best_match[1]}")
-
         best_template = icon_templates[best_match[2]]
         match_size = best_template.shape[::-1]
+        # print(f"Score for icon {icon_index} = {best_match[0]} with template {best_match[2]} @ {best_match[1]}")
 
         predicted_icons.append([icon_index, best_match, match_size])
     
@@ -598,9 +609,10 @@ def recursiveIconPrediction(img_pyr, threshold, icon_pyramids, icon_indicies, te
     for prediction in predicted_icons:
         icon_index = prediction[0]
         best_match = prediction[1] # (score, location, template_index)
+        match_size = prediction[2]
+
         icon_indicies.append(icon_index)    
-        # Upscale the best match location
-        # FIXME: This only works properly if we are downsampling by 50% each time
+        # Upscale the cell with the highest correlation score
         test_coords.append((best_match[1][0] * 2, best_match[1][1] * 2))
 
     return recursiveIconPrediction(img_pyr, threshold+0.03, icon_pyramids, icon_indicies, test_coords, pyr_depth-2, depth-1)
@@ -659,6 +671,9 @@ def testTask2(iconDir, testDir):
             icon_pyr.append(half_step_templates[i])
         icon_pyramids.append(icon_pyr) # 14 layers per icon
 
+    # Print the size of the last element in the icon_pyramids list
+    print(icon_pyramids[-1][-1].shape)
+
     image_folder = f'./{testDir}/images'
     images = []
     image_names = os.listdir(image_folder)
@@ -669,11 +684,6 @@ def testTask2(iconDir, testDir):
         image = cv2.imread(image_path, cv2.IMREAD_GRAYSCALE)
         blurred_image = cv2.GaussianBlur(image, ksize=(5,5), sigmaX=0)
         images.append(blurred_image)
-
-    # methods = ['cv2.TM_CCOEFF', 'cv2.TM_CCOEFF_NORMED', 'cv2.TM_CCORR',
-    # 'cv2.TM_CCORR_NORMED', 'cv2.TM_SQDIFF', 'cv2.TM_SQDIFF_NORMED']
-    # method = ['cv2.TM_CCOEFF_NORMED']
-    # method = eval(method[0])
 
     overall_TPs = 0
     overall_FPs = 0
@@ -690,8 +700,7 @@ def testTask2(iconDir, testDir):
 
         # Create gaussian pyramid of test_image
         img_pyr = build_gaussian_pyramid(image, 3)
-
-        # test_coords = None # FIXME: rename
+        # Top layer with size 64x64
 
         # Predict which icons are in the image, by recursively searching each layer of the image pyramid - starting at the top
         # Searching only for the icons predicted in the previous layer at specific locations
