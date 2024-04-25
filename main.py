@@ -72,34 +72,27 @@ def HoughLines(edges, rho_res, theta_res):
             else:
                 highs[(t_index, r_index)] = (x, y)
 
-    index_to_votes = {}
-    theta_indices, rho_indices = np.where(accumulator > threshold)
-    for theta_index, rho_index in zip(theta_indices, rho_indices):
-        index_to_votes[(theta_index, rho_index)] = accumulator[theta_index, rho_index]
+    # Sorts the accumulator by vote count in descending order and returns the indices of the cells
+    sorted_indicies = np.argsort(accumulator.flatten())[::-1]
+    # Convert these indices back to 2D indices
+    sorted_indicies = np.unravel_index(sorted_indicies, accumulator.shape)
 
-    # sort the dict by the vote count
-    index_to_votes = dict(sorted(index_to_votes.items(), key=lambda item: item[1], reverse=True))
-
-    # Generate polar coordinates from the the top 2 cells in the dict
+    extremes = []
     polar_coordinates = []
-    final_indices = []
-    for theta_index, rho_index in index_to_votes.keys():
-        theta = theta_values[theta_index]
-        rho = rho_values[rho_index]
+    for t_index, r_index in zip(sorted_indicies[0], sorted_indicies[1]):
+        theta = theta_values[t_index]
+        rho = rho_values[r_index]
 
         if len(polar_coordinates) == 0:
             polar_coordinates.append([rho, theta])
-            final_indices.append((rho_index, theta_index))
+            extremes.append((lows[(t_index, r_index)], highs[(t_index, r_index)]))
+        # Looping till a valid 2nd best line is found
         elif abs(polar_coordinates[0][1] - theta) > math.radians(1):
             polar_coordinates.append([rho, theta])
-            final_indices.append((rho_index, theta_index))
+            extremes.append((lows[(t_index, r_index)], highs[(t_index, r_index)]))
             break
 
-    polar_coordinates = np.array(polar_coordinates)
-
-    extremes = []
-    for r_index, t_index in final_indices:
-        extremes.append((lows[(t_index, r_index)], highs[(t_index, r_index)]))
+    # polar_coordinates = np.array(polar_coordinates)
     return (polar_coordinates, extremes)
 
 # Round angle to nearest 45 degrees
