@@ -615,7 +615,7 @@ def recursiveIconPrediction(img_pyr, threshold, icon_pyramids, icon_indicies, te
         # Upscale the cell with the highest correlation score
         test_coords.append((best_match[1][0] * 2, best_match[1][1] * 2))
 
-    return recursiveIconPrediction(img_pyr, threshold+0.03, icon_pyramids, icon_indicies, test_coords, pyr_depth-2, depth-1)
+    return recursiveIconPrediction(img_pyr, threshold+0.06, icon_pyramids, icon_indicies, test_coords, pyr_depth-3, depth-1)
 
 # Displaying all the predicted icons (and their bounding boxes) on the image
 def show_predictions(image, image_index, predictions):
@@ -663,10 +663,13 @@ def testTask2(iconDir, testDir):
         # blurred_icon = cv2.GaussianBlur(icon, ksize=(5,5), sigmaX=0)
 
         templates = build_gaussian_pyramid(icon, 6)
+        big_half_step = cv2.resize(icon, dsize=None, fx=1.25, fy=1.25)
+        big_half_step_templates = build_gaussian_pyramid(big_half_step, 6)
         half_step = cv2.resize(icon, dsize=None, fx=0.75, fy=0.75)
         half_step_templates = build_gaussian_pyramid(half_step, 6)
         icon_pyr = []
         for i in range(0, len(templates)):
+            icon_pyr.append(big_half_step_templates[i])
             icon_pyr.append(templates[i])
             icon_pyr.append(half_step_templates[i])
         icon_pyramids.append(icon_pyr) # 14 layers per icon
@@ -693,7 +696,7 @@ def testTask2(iconDir, testDir):
 
     icon_indicies = list(range(len(icon_names)))
     pyr_depth = len(icon_pyramids[0])
-    threshold = 0.85
+    threshold = 0.75
 
     for image_index, image in enumerate(images):
         print(f'Image {image_index + 1}')
