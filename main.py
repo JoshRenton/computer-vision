@@ -655,9 +655,6 @@ def testTask2(iconDir, testDir):
         icon_path = os.path.join(icon_folder, filename)
         icon = cv2.imread(icon_path, cv2.IMREAD_GRAYSCALE)
 
-        # TODO: Does pyrdown blur the images for us???
-        # blurred_icon = cv2.GaussianBlur(icon, ksize=(5,5), sigmaX=0)
-
         templates = build_gaussian_pyramid(icon, 6)
         half_step = cv2.resize(icon, dsize=None, fx=0.75, fy=0.75)
         half_step_templates = build_gaussian_pyramid(half_step, 6)
@@ -678,8 +675,7 @@ def testTask2(iconDir, testDir):
     for filename in sorted_image_names:
         image_path = os.path.join(image_folder, filename)
         image = cv2.imread(image_path, cv2.IMREAD_GRAYSCALE)
-        blurred_image = cv2.GaussianBlur(image, ksize=(5,5), sigmaX=0)
-        images.append(blurred_image)
+        images.append(image)
 
     overall_TPs = 0
     overall_FPs = 0
