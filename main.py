@@ -7,18 +7,15 @@ import os
 import argparse
 from datetime import datetime
 
-def HoughLines(edges, rho_res, theta_res, threshold):
+def HoughLines(edges, rho_res, theta_res):
     """
-    Multiplies two numbers and returns the result.
-
     Parameters:
         edges (): 2D array representing the edges of an image
         rho_res (double): Resolution of rho in pixels
         theta_res (double): Resolution of theta in radians
-        threshold (int): Minimum number of intersections to detect a line
  
     Returns:
-        int: blah blah blah
+        (polar_coordinates, extremes): The polar coordinates of the two best detected lines and the coordinates of their extremes
     """
 
     # edges is a 2D array with one cell per pixel of the original image
@@ -42,7 +39,6 @@ def HoughLines(edges, rho_res, theta_res, threshold):
     # Get the indices of all edges in the edge array
     # The index is the coordinate of the edge since the edge array is the same size as the image
     edge_coords = np.asarray(edges == 255).nonzero()
-    threshold = len(edge_coords[0]) * 0.15
 
     # Precalculate sin and cos values for each theta value
     theta_sins = np.sin(theta_values)
@@ -278,7 +274,7 @@ def testTask1(folder_name):
         edges = canny(image, 50, 200)
 
         # 1 degree = pi / 180 radians
-        lines, extremes = HoughLines(edges, 1, math.radians(1), 90)
+        lines, extremes = HoughLines(edges, 1, math.radians(1))
 
         if lines is None:
             print(row['FileName'])
