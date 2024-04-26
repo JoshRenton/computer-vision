@@ -384,20 +384,6 @@ def build_gaussian_pyramid(image, downsamples):
         G = cv2.pyrDown(G) # 50% downscale
         pyramid.append(G)
     return pyramid
-
-def build_laplacian_pyramid(gp):
-    lp = []
-    pyr_height = len(gp)
-    for i in range(pyr_height - 1, 0, -1):
-        G = cv2.pyrUp(gp[i])
-        L = cv2.subtract(gp[i - 1], G)
-        lp.append(L)
-    return lp
-
-def normalize_img(img):
-    norm_img = img - np.mean(img)
-    return norm_img
-
 # Calculate ncc for all patches
 def normalised_cross_correlation(patches, template):
     # patches = a 4D array
