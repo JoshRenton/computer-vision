@@ -715,21 +715,22 @@ def testTask2(iconDir, testDir):
     print(f"Average time taken: {average_time}")
     print(f'Overall runtime: {sum(time_taken)}')
 
-    # How often it detected an object when the object was not there
-    # false_positive_rate = false_positives / (false_positives + true_negatives)
-    # false_positive_rate = false_positives / (false_positives + true_positives)
-    # false_negative_rate = false_negatives / (false_negatives + true_positives)
-    true_positive_rate = true_positives / (true_positives + false_negatives)
+    max_possible_icons = len(icon_names) * len(images)
+    # TN = Correctly predicted an icon wasn't in the image
+    overall_TNs =  max_possible_icons - overall_TPs - overall_FPs - overall_FNs
+
+    TPR  = overall_TPs  / (overall_TPs + overall_FNs)
+    FPR = overall_FPs / (overall_FPs + overall_TNs)
+    FNR = overall_FNs / (overall_FPs + overall_FNs)
+    print(f'True Positive Rate: {TPR}')
+    print(f'False Positive Rate: {FPR}')
+    print(f'False Negative Rate: {FNR}')
 
     accuracy = overall_TPs / (overall_TPs + overall_FPs + overall_FNs)
-    precision = overall_TPs / (overall_TPs + overall_FPs)
-    recall = overall_TPs / (overall_TPs + overall_FNs)
-    # Return the results
-    print(f"Accuracy: {accuracy}, Precision: {precision}, Recall: {recall}, True Positive Rate: {true_positive_rate}")
+    print(f'Accuracy: {accuracy}')
 
-    # TODO:
-    # based on the IoU determine acceracy, TruePositives, FalsePositives, FalseNegatives
-    # return (Acc,TPR,FPR,FNR)
+    # Return the results
+    return (accuracy,TPR,FPR,FNR)
 
 def testTask3(iconFolderName, testFolderName):
     # assume that test folder name has a directory annotations with a list of csv files
