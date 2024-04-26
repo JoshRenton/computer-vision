@@ -21,12 +21,9 @@ def HoughLines(edges, rho_res, theta_res):
     # edges is a 2D array with one cell per pixel of the original image
     # Each cell is a value between 0 and 255, with 255 being an edge
 
-    # TODO: Remove resolution parameters? Functions breaks if they're changed
-
     # theta_res = pi / 180 = 1 degree, giving 180 theta values
     theta_values = np.arange(0, np.pi, theta_res)
 
-    # TODO: Not sure how you would get at most -diagonal_length
     # Max rho is the diagonal of the image (when theta = 45 degrees)
     diagonal_length = np.sqrt(edges.shape[0]**2 + edges.shape[1]**2)
     rho_values = np.arange(-diagonal_length, diagonal_length, rho_res)
@@ -160,21 +157,6 @@ def canny(image, t_low, t_high):
     g = (g / g.max()) * 255
 
     theta = np.rad2deg(theta)
-
-    a = np.zeros((g.shape[0], g.shape[1], 3))
-
-    for row in range(0, a.shape[0]):
-        for column in range(0, a.shape[1]):
-            r_angle = round_angle(theta[row][column])
-            if r_angle == 0:
-                a[row][column] = [255, 0, 0]
-            if r_angle == 45:
-                a[row][column] = [0, 255, 0]
-            if r_angle == 90:
-                a[row][column] = [0, 0, 255]
-            if r_angle == 135:
-                a[row][column] = [255, 255, 255]
-
     suppress = np.zeros_like(image, dtype=np.float32)
 
     # Non-maximum suppression
@@ -262,7 +244,6 @@ def testTask1(folder_name):
     # Iterate through all images
     for index, row in task1_data.iterrows():
         image =  cv2.imread(folder_name + '/' + row['FileName'], cv2.IMREAD_GRAYSCALE)
-        # image = cv2.rotate(image, cv2.ROTATE_90_COUNTERCLOCKWISE)
         actual_angles.append(row['AngleInDegrees'])
         edges = canny(image, 50, 200)
 
@@ -275,12 +256,10 @@ def testTask1(folder_name):
 
         cdst =  cv2.cvtColor(edges,  cv2.COLOR_GRAY2BGR)
         angles_deg = []
-        pts = []
 
         # Able to work directly with the normal line because
         # theta is the same as the angle between the line and the y-axis
         # This works because you rotate both the line and the axis you compare it to by 90 degrees
-
         for line in lines:
             # The Origin is in the top left corner of the image
             # rho = distance from the origin to the line
@@ -294,7 +273,7 @@ def testTask1(folder_name):
             #     theta = (theta + np.pi)
 
             angle = math.degrees(theta)
-            print("rho:", rho, "\t theta:", angle)
+            # print("rho:", rho, "\t theta:", angle)
 
             # If the angle is close to 360 degrees, assume it's a vertical line
             if abs(angle - 360) < 1.1:
@@ -350,12 +329,6 @@ def testTask1(folder_name):
         else:
             print(row['FileName'])
 
-        # cv2.imwrite('temp/' + row['FileName'], detected_lines)
-
-        # cv2.imshow('Detected Lines', cdst)
-        # cv2.waitKey(0)
-        # cv2.destroyAllWindows()
-            
     # Calculate errors
     errors = np.abs(np.subtract(actual_angles, predicted_angles))
     total_error = np.sum(errors)
@@ -365,9 +338,9 @@ def testTask1(folder_name):
     # Create dataframe to show results
     results = pd.DataFrame(combined_results, index=[filename.strip('.png') for filename in task1_data.loc[:,'FileName']], columns=['Actual', 'Predicted', 'Error'])
     
-    print("")
-    print(results)
-    print(f"\nTotal error: {total_error}")
+    # print("")
+    # print(results)
+    # print(f"\nTotal error: {total_error}")
 
     return(total_error)
 
@@ -379,11 +352,11 @@ def build_gaussian_pyramid(image, downsamples):
     G = image.copy()
     pyramid = [G]
 
-    # TODO: Rename variables
     for _ in range(downsamples):
         G = cv2.pyrDown(G) # 50% downscale
         pyramid.append(G)
     return pyramid
+
 # Calculate ncc for all patches
 def normalised_cross_correlation(patches, template):
     # patches = a 4D array
@@ -529,11 +502,6 @@ def recursiveIconPrediction(img_pyr, threshold, icon_pyramids, icon_indicies, te
         # Multi-scale template matching - keeping only the best matching template for this icon
         if is_initial_search:
             # This top layer is the only layer that is searched for all icons
-
-            # TODO: Play around with this to test speed vs accuracy
-            # Templates bigger than the image are not run anyways so that's why skipping the first x layers doesn't make a diff
-            # icon_templates = icon_pyramids[icon_index][8:pyr_depth-1]
-
             for templ_index, templ in enumerate(icon_templates):
                 result = matchTemplate(img, templ)
                 _, max_val, _, max_loc = cv2.minMaxLoc(result)
@@ -750,6 +718,3 @@ if __name__ == "__main__":
         # The Icon dataset directory contains an icon image for each file
         # The Task3 dataset has two directories, an annotation directory that contains the annotation and a png directory with list of images 
         testTask3(args.IconDataset,args.Task3Dataset)
-
-# testTask1('Task1Dataset')
-# testTask2('IconDataset', 'Task2Datset')
