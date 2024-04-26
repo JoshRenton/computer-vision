@@ -408,15 +408,19 @@ def normalised_cross_correlation(patches, template):
     patches_deviation = patches - patch_means
     template_deviation = template - np.mean(template)
 
-    # Compute the normalized cross-correlation
-    cross_correlation = np.sum(patches_deviation * template_deviation, axis=(2, 3))
-    denominator = np.sqrt(np.sum(patches_deviation**2, axis=(2, 3)) * np.sum(template_deviation**2)) + 1e-6
-    ncc_scores = cross_correlation / denominator
+    # Calculating the similarity score between the template and each patch, stored in a 2D array
 
-    # img_std = np.std(patches, axis=(2, 3))
-    # denominator = (img_std * np.std(template) + 1e-6) * template.shape[0] * template.shape[1]
+    # Quicker, but normalises the sums rather than the whole template & patch
+    # cross_correlation = np.sum(patches_deviation * template_deviation, axis=(2, 3))
+    # denominator = np.sqrt(np.sum(patches_deviation**2, axis=(2,3)) * np.sum(template_deviation**2)) + 1e-6
     # ncc_scores = cross_correlation / denominator
 
+    # Normalising the pixels in the patch & template before correlating
+    normalised_patches = patches_deviation  / (1e-6 + np.sqrt(np.sum( patches_deviation**2, axis=(2,3), keepdims=True )))
+    normalised_template = template_deviation / (1e-6 + np.sqrt(np.sum( template_deviation**2 )))
+    ncc_scores = np.sum(normalised_patches * normalised_template, axis=(2, 3))
+
+    # ncc_scores range from -1 to 1
     return ncc_scores
 
 def matchTemplate(img, template):
