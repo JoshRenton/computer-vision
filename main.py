@@ -679,7 +679,10 @@ def testTask2(iconDir, testDir):
 
     TPR  = overall_TPs  / (overall_TPs + overall_FNs)
     FPR = overall_FPs / (overall_FPs + overall_TNs)
-    FNR = overall_FNs / (overall_FPs + overall_FNs)
+    if overall_FNs == 0:
+        FNR = 0
+    else:
+        FNR = overall_FNs / (overall_FPs + overall_FNs)
     print(f'True Positive Rate: {TPR}')
     print(f'False Positive Rate: {FPR}')
     print(f'False Negative Rate: {FNR}')
