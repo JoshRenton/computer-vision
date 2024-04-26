@@ -262,7 +262,7 @@ def testTask1(folder_name):
     # Iterate through all images
     for index, row in task1_data.iterrows():
         image =  cv2.imread(folder_name + '/' + row['FileName'], cv2.IMREAD_GRAYSCALE)
-        image = cv2.rotate(image, cv2.ROTATE_90_COUNTERCLOCKWISE)
+        # image = cv2.rotate(image, cv2.ROTATE_90_COUNTERCLOCKWISE)
         actual_angles.append(row['AngleInDegrees'])
         edges = canny(image, 50, 200)
 
@@ -286,13 +286,12 @@ def testTask1(folder_name):
             # rho = distance from the origin to the line
             # theta = counter-clockwise angle from the x-axis to normal of the line [0, π]
 
-            # rho, theta = line[0]
             rho, theta = line
             rho = abs(rho)
 
-            # When rho is negative, we need to flip the angle along the x-axis
-            if rho < 0:
-                theta = (theta + np.pi)
+            # # When rho is negative, we need to flip the angle along the x-axis
+            # if rho < 0:
+            #     theta = (theta + np.pi)
 
             angle = math.degrees(theta)
             print("rho:", rho, "\t theta:", angle)
@@ -379,7 +378,6 @@ def testTask1(folder_name):
 def build_gaussian_pyramid(image, downsamples):
     G = image.copy()
     pyramid = [G]
-    # TODO: Start the template at a smaller scale???
 
     # TODO: Rename variables
     for _ in range(downsamples):
@@ -658,7 +656,7 @@ def testTask2(iconDir, testDir):
         icon_pyramids.append(icon_pyr) # 14 layers per icon
 
     # Print the size of the last element in the icon_pyramids list
-    print(icon_pyramids[-1][-1].shape)
+    # print(icon_pyramids[-1][-1].shape)
 
     image_folder = f'./{testDir}/images'
     images = []
@@ -693,6 +691,7 @@ def testTask2(iconDir, testDir):
         start=datetime.now()
         final_predictions = recursiveIconPrediction(img_pyr, threshold, icon_pyramids, icon_indicies, test_coords=None, pyr_depth=pyr_depth, depth=len(img_pyr)-1)
         elapsed_time = datetime.now() - start
+        time_taken.append(elapsed_time.total_seconds())
 
         # Convert the icon index to the icon name
         final_predictions = [[icon_names[prediction[0]]] + prediction[1:] for prediction in final_predictions]
@@ -707,19 +706,10 @@ def testTask2(iconDir, testDir):
         overall_FPs += false_positives
         overall_FNs += false_negatives
         overall_iou += iou_sum
-        time_taken.append(elapsed_time.total_seconds())
 
     # Evaluate the performance over all images
     print(f"Overall TPs: {overall_TPs}, Overall FPs: {overall_FPs}, Overall FNs: {overall_FNs}")
     print(f"Overall IoU: {overall_iou}")
-    
-    # Plot the icon prediction runtime for each image
-    # plt.bar(range(len(time_taken)), time_taken)
-    # plt.xlabel('Image')
-    # plt.xticks(range(len(time_taken)), [str(i) for i in range(1, len(time_taken) + 1)])
-    # plt.ylabel('Time Taken (seconds)')
-    # plt.title('Icon prediction runtime')
-    # plt.show()
 
     average_time = sum(time_taken) / len(time_taken)
     print(f"Average time taken: {average_time}")
