@@ -605,13 +605,14 @@ def testTask2(iconDir, testDir):
         icon = cv2.imread(icon_path, cv2.IMREAD_GRAYSCALE)
 
         templates = build_gaussian_pyramid(icon, 6)
+        # Create icon scaled to 75%
         half_step = cv2.resize(icon, dsize=None, fx=0.75, fy=0.75)
         half_step_templates = build_gaussian_pyramid(half_step, 6)
         icon_pyr = []
         for i in range(0, len(templates)):
             icon_pyr.append(templates[i])
             icon_pyr.append(half_step_templates[i])
-        icon_pyramids.append(icon_pyr) # 14 layers per icon
+        icon_pyramids.append(icon_pyr) # 12 layers per icon
 
     # Print the size of the last element in the icon_pyramids list
     # print(icon_pyramids[-1][-1].shape)
